@@ -528,6 +528,12 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
     return [];
   }
 
+  if (type === 'tool_use') {
+    const name = asString(obj.tool_name) || 'tool';
+    const input = asObject(obj.parameters) || {};
+    return [{ type: 'tool.use', name, input }];
+  }
+
   if (type === 'result') {
     if (asString(obj.status) === 'success') {
       return [{ type: 'turn.complete', reason: 'success' }];

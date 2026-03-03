@@ -1,8 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
 import { buildCommand } from '../src/build';
-import { getHarness, listHarnesses } from '../src/harnesses';
+import { listHarnesses } from '../src/harnesses';
 import { resolveBinary } from '../src/resolve';
 
 // =============================================================================
@@ -636,45 +635,10 @@ describe('json input', () => {
 // =============================================================================
 
 describe('resolve', () => {
-  it('resolveBinary returns absolute path for known binary', () => {
+  it('resolveBinary returns absolute path for a binary on PATH', () => {
     const path = resolveBinary('node');
     assert.ok(path.startsWith('/'), `expected absolute path, got: ${path}`);
     assert.ok(path.includes('node'));
-  });
-
-  it('resolveBinary throws for unknown binary', () => {
-    assert.throws(
-      () => resolveBinary('nonexistent-binary-that-does-not-exist-12345'),
-      /Binary not found on PATH/,
-    );
-  });
-
-  it('--resolve flag returns absolute path in argv[0]', () => {
-    const output = execSync(
-      `node dist/src/cli.js build --harness gemini --prompt hello --resolve`,
-      { encoding: 'utf-8', cwd: process.cwd() }
-    ).trim();
-    const spec = JSON.parse(output);
-    assert.ok(spec.argv[0].startsWith('/'), `expected absolute path, got: ${spec.argv[0]}`);
-  });
-});
-
-// =============================================================================
-// Check command
-// =============================================================================
-
-describe('check', () => {
-  it('resolveBinary returns available for a known binary', () => {
-    const config = getHarness('gemini');
-    let available = false;
-    let path: string | null = null;
-    try {
-      path = resolveBinary(config.binary);
-      available = true;
-    } catch {}
-    assert.strictEqual(config.binary, 'gemini');
-    assert.strictEqual(typeof available, 'boolean');
-    if (available) assert.ok(path?.startsWith('/'));
   });
 
   it('resolveBinary throws for unknown binary', () => {

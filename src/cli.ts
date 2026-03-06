@@ -24,6 +24,7 @@ Options:
   --resume                 Resume an existing session (vs create new)
   --cwd <path>             Working directory for the agent process
   --bypass-permissions     Include permissions bypass flags
+  --debug-events           Mirror raw provider stdout/stderr to stderr during run
   --reasoning <level>      Reasoning effort level (codex only: medium, high, xhigh, etc.)
   --resolve                Resolve binary in argv[0] to absolute path (build only)
   --input <json|->         JSON input (inline or stdin). Shape: { harness, model?, prompt?, ... }
@@ -122,12 +123,14 @@ function parseBuildOptions(rest: string[]): { harness: string; options: BuildOpt
 
 function parseRunRequest(rest: string[]): ExecuteCommandRequest {
   const opts = parseArgs(rest);
+  const debugRawEvents = opts['debug-events'] === true || process.env.AGENT_CLI_DEBUG_EVENTS === '1';
 
   if (opts.input !== undefined) {
     const raw = opts.input === '-'
       ? readFileSync(0, 'utf-8')
       : opts.input as string;
-    return JSON.parse(raw) as ExecuteCommandRequest;
+    const parsed = JSON.parse(raw) as ExecuteCommandRequest;
+    return debugRawEvents ? { ...parsed, debugRawEvents: true } : parsed;
   }
 
   const harness = opts.harness as string | undefined;
@@ -146,6 +149,7 @@ function parseRunRequest(rest: string[]): ExecuteCommandRequest {
     model: opts.model as string | undefined,
     extraArgs: opts.extra as string[] | undefined,
     yolo: opts['bypass-permissions'] === true,
+    ...(debugRawEvents ? { debugRawEvents: true } : {}),
     ...(opts.session ? { sessionId: opts.session as string } : {}),
     ...(opts.resume && opts.session ? { resumeSessionId: opts.session as string } : {}),
   };

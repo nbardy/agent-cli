@@ -42,6 +42,8 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   resumeSessionId?: string;
   /** True by default: run in maximum non-interactive mode where supported. */
   yolo?: boolean;
+  /** Mirror raw provider stdout/stderr to this process stderr for debugging. */
+  debugRawEvents?: boolean;
   /** Spawn detached process group. */
   detached?: boolean;
 };
@@ -199,6 +201,22 @@ function summarizeRawStdout(harness: string, text: string): string {
   return `${harness} emitted non-JSON stdout in conversation mode: ${snippet}`;
 }
 
+function mirrorDebugLines(prefix: string, text: string, trailing: string): string {
+  const combined = trailing + text;
+  const lines = combined.split('\n');
+  const nextTrailing = lines.pop() ?? '';
+  for (const line of lines) {
+    process.stderr.write(`${prefix}${line.replace(/\r$/, '')}\n`);
+  }
+  return nextTrailing;
+}
+
+function flushDebugTrailing(prefix: string, trailing: string): void {
+  if (trailing.length > 0) {
+    process.stderr.write(`${prefix}${trailing.replace(/\r$/, '')}\n`);
+  }
+}
+
 function buildModeExtraArgs(
   harness: Harness,
   mode: TurnMode,
@@ -258,6 +276,10 @@ function captureSessionIdFromJson(harness: Harness, json: unknown): string | und
   }
 
   if (harness === 'claude') {
+    return asString(obj.session_id) ?? asString(obj.sessionId);
+  }
+
+  if (harness === 'gemini') {
     return asString(obj.session_id) ?? asString(obj.sessionId);
   }
 
@@ -669,6 +691,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   let stopRequested = false;
   let stdoutBuffer = '';
   let stderrBuffer = '';
+  let debugStderrTrailing = '';
 
   let resolveSessionId!: (value: string) => void;
   const sessionId = new Promise<string>((resolve) => {
@@ -719,6 +742,10 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     const text = chunk.toString();
 
     if (request.mode === 'single-shot') {
+      if (request.debugRawEvents && text.length > 0) {
+        process.stderr.write(`[agent-cli raw ${request.harness} stdout] ${text}`);
+        if (!text.endsWith('\n')) process.stderr.write('\n');
+      }
       if (text.length > 0) emit({ type: 'text.delta', text });
       return;
     }
@@ -726,6 +753,12 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     stdoutBuffer += text;
     const lines = stdoutBuffer.split('\n');
     stdoutBuffer = lines.pop() ?? '';
+
+    if (request.debugRawEvents) {
+      for (const line of lines) {
+        process.stderr.write(`[agent-cli raw ${request.harness} stdout] ${line.replace(/\r$/, '')}\n`);
+      }
+    }
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -751,6 +784,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
   const onStderr = (chunk: Buffer): void => {
     const text = chunk.toString();
+    if (request.debugRawEvents) {
+      debugStderrTrailing = mirrorDebugLines(`[agent-cli raw ${request.harness} stderr] `, text, debugStderrTrailing);
+    }
     emit({ type: 'stderr', text });
     stderrBuffer += text;
   };
@@ -776,6 +812,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       if (request.mode === 'conversation') {
         const trailing = stdoutBuffer.trim();
         if (trailing) {
+          if (request.debugRawEvents) {
+            process.stderr.write(`[agent-cli raw ${request.harness} stdout] ${trailing.replace(/\r$/, '')}\n`);
+          }
           try {
             const json = JSON.parse(trailing) as unknown;
             maybeUpdateSession(json);
@@ -789,6 +828,10 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
             });
           }
         }
+      }
+
+      if (request.debugRawEvents) {
+        flushDebugTrailing(`[agent-cli raw ${request.harness} stderr] `, debugStderrTrailing);
       }
 
       let finalReason = completionReason;

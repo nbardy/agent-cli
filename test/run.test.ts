@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -59,6 +60,8 @@ function writeGeminiShim(binDir: string): void {
   const shimSource = `#!/usr/bin/env node
 const promptIdx = process.argv.indexOf('-p');
 const prompt = promptIdx >= 0 ? (process.argv[promptIdx + 1] ?? '') : '';
+const resumeIdx = process.argv.indexOf('--resume');
+const resumeSession = resumeIdx >= 0 ? (process.argv[resumeIdx + 1] ?? '') : '';
 const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n');
 
 if (prompt === 'gemini-auth-required') {
@@ -67,9 +70,20 @@ if (prompt === 'gemini-auth-required') {
 }
 
 if (prompt === 'gemini-success') {
-  emit({ type: 'init' });
+  emit({ type: 'init', session_id: 'gemini-session-1' });
   emit({ type: 'tool_result', status: 'success', output: 'ls output' });
   emit({ type: 'message', role: 'assistant', content: 'hi from gemini' });
+  emit({ type: 'result', status: 'success' });
+  process.exit(0);
+}
+
+if (prompt === 'gemini-resume-success') {
+  if (resumeSession !== 'gemini-session-1') {
+    process.stderr.write('Use --list-sessions to see available sessions, then use --resume {number}, --resume {uuid}, or --resume latest.\\n');
+    process.exit(3);
+  }
+  emit({ type: 'init', session_id: 'gemini-session-1' });
+  emit({ type: 'message', role: 'assistant', content: 'hi again from gemini' });
   emit({ type: 'result', status: 'success' });
   process.exit(0);
 }
@@ -305,7 +319,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     );
   });
 
-  it('does not invent a fake session id for first-turn gemini runs', async () => {
+  it('captures the real gemini session id from init output', async () => {
     const turn = executeCommand({
       harness: 'gemini2',
       mode: 'conversation',
@@ -320,16 +334,88 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const events = await eventsPromise;
 
     assert.strictEqual(completion.reason, 'success');
-    assert.strictEqual(completion.sessionId, '');
+    assert.strictEqual(completion.sessionId, 'gemini-session-1');
 
     const sessionEvents = events.filter(
       (event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> => event.type === 'session.started'
     );
-    assert.strictEqual(sessionEvents.length, 0);
+    assert.deepStrictEqual(sessionEvents.map((event) => event.sessionId), ['gemini-session-1']);
 
     const errors = events.filter(
       (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
     );
     assert.strictEqual(errors.length, 0);
+  });
+
+  it('resumes gemini with the captured real session id', async () => {
+    const firstTurn = executeCommand({
+      harness: 'gemini2',
+      mode: 'conversation',
+      prompt: 'gemini-success',
+      cwd: workspace,
+      model: 'gemini-3.1-pro-preview',
+      yolo: false,
+    });
+
+    const firstCompletion = await firstTurn.completed;
+    assert.strictEqual(firstCompletion.reason, 'success');
+    assert.strictEqual(firstCompletion.sessionId, 'gemini-session-1');
+
+    const resumedTurn = executeCommand({
+      harness: 'gemini2',
+      mode: 'conversation',
+      prompt: 'gemini-resume-success',
+      cwd: workspace,
+      model: 'gemini-3.1-pro-preview',
+      resumeSessionId: firstCompletion.sessionId,
+      yolo: false,
+    });
+
+    const eventsPromise = collectEvents(resumedTurn.events);
+    const resumedCompletion = await resumedTurn.completed;
+    const resumedEvents = await eventsPromise;
+
+    assert.strictEqual(resumedTurn.spec.argv[0], 'gemini2');
+    assert.ok(resumedTurn.spec.argv.includes('--resume'));
+    assert.ok(resumedTurn.spec.argv.includes('gemini-session-1'));
+    assert.strictEqual(resumedCompletion.reason, 'success');
+    assert.strictEqual(resumedCompletion.sessionId, 'gemini-session-1');
+
+    const errors = resumedEvents
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .map((event) => event.message);
+    assert.deepStrictEqual(errors, []);
+
+    const text = resumedEvents
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .map((event) => event.text)
+      .join('');
+    assert.match(text, /hi again from gemini/);
+  });
+
+  it('agent-cli run can mirror raw gemini events to stderr for debugging', () => {
+    const cliPath = path.join(process.cwd(), 'dist', 'src', 'cli.js');
+    const request = {
+      harness: 'gemini2',
+      mode: 'conversation',
+      prompt: 'gemini-success',
+      cwd: workspace,
+      model: 'gemini-3.1-pro-preview',
+      yolo: false,
+      debugRawEvents: true,
+    };
+
+    const result = spawnSync(process.execPath, [cliPath, 'run', '--input', '-'], {
+      cwd: process.cwd(),
+      env: { ...process.env, PATH: `${tempRoot}:${originalPath}` },
+      input: JSON.stringify(request),
+      encoding: 'utf8',
+    });
+
+    assert.strictEqual(result.status, 0, `expected successful CLI run, got stderr: ${result.stderr}`);
+    assert.match(result.stderr, /\[agent-cli raw gemini2 stdout\].*session_id/);
+    assert.match(result.stderr, /\[agent-cli raw gemini2 stdout\].*tool_result/);
+    assert.match(result.stdout, /"type":"session\.started"/);
+    assert.match(result.stdout, /"type":"text\.delta"/);
   });
 });

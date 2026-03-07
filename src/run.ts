@@ -286,86 +286,134 @@ function captureSessionIdFromJson(harness: Harness, json: unknown): string | und
   return undefined;
 }
 
-function parseClaude(json: unknown): UnifiedAgentEvent[] {
-  const obj = asObject(json);
-  if (!obj) return [{ type: 'error', message: 'Claude emitted non-object JSON' }];
+/**
+ * Stateful Claude stream parser.
+ *
+ * Claude's streaming protocol splits tool_use across three event types:
+ *   1. content_block_start  — tool name + block ID (no input yet)
+ *   2. content_block_delta  — input_json_delta chunks (partial JSON fragments)
+ *   3. content_block_stop   — signals the block is complete
+ *
+ * The old stateless parser emitted tool.use at content_block_start with only
+ * { _blockId }, so formatToolUse never saw the `command` field and couldn't
+ * detect oompa launches. This stateful version accumulates input_json_delta
+ * fragments and emits tool.use with the full reconstructed input at
+ * content_block_stop.
+ */
+function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
+  // Track the in-flight tool_use block being streamed.
+  let pendingTool: { name: string; inputJson: string } | null = null;
 
-  const type = asString(obj.type);
-  if (type === 'system' && asString(obj.subtype) === 'init') {
-    return [{ type: 'turn.started' }];
-  }
+  return (json: unknown): UnifiedAgentEvent[] => {
+    const obj = asObject(json);
+    if (!obj) return [{ type: 'error', message: 'Claude emitted non-object JSON' }];
 
-  if (type === 'stream_event') {
-    const event = asObject(obj.event);
-    const eventType = asString(event?.type);
+    const type = asString(obj.type);
+    if (type === 'system' && asString(obj.subtype) === 'init') {
+      return [{ type: 'turn.started' }];
+    }
 
-    if (eventType === 'content_block_delta') {
-      const delta = asObject(event?.delta);
-      if (asString(delta?.type) === 'text_delta' && asString(delta?.text)) {
-        return [{ type: 'text.delta', text: asString(delta!.text)! }];
+    if (type === 'stream_event') {
+      const event = asObject(obj.event);
+      const eventType = asString(event?.type);
+
+      if (eventType === 'content_block_delta') {
+        const delta = asObject(event?.delta);
+        const deltaType = asString(delta?.type);
+        if (deltaType === 'text_delta' && asString(delta?.text)) {
+          return [{ type: 'text.delta', text: asString(delta!.text)! }];
+        }
+        // Accumulate input_json_delta fragments for the pending tool block.
+        if (deltaType === 'input_json_delta' && pendingTool) {
+          const partial = asString(delta?.partial_json);
+          if (partial) pendingTool.inputJson += partial;
+        }
+        return [];
       }
+
+      if (eventType === 'content_block_start') {
+        const contentBlock = asObject(event?.content_block);
+        if (asString(contentBlock?.type) === 'tool_use') {
+          const name = asString(contentBlock?.name) ?? 'tool';
+          // Start accumulating — don't emit tool.use yet (wait for full input).
+          pendingTool = { name, inputJson: '' };
+        }
+        return [];
+      }
+
+      if (eventType === 'content_block_stop') {
+        if (pendingTool) {
+          const { name, inputJson } = pendingTool;
+          pendingTool = null;
+
+          let input: Record<string, unknown> = {};
+          if (inputJson) {
+            try {
+              input = JSON.parse(inputJson) as Record<string, unknown>;
+            } catch {
+              // Malformed JSON — emit with empty input rather than losing the event.
+            }
+          }
+
+          // AskUserQuestion and Task get special treatment downstream.
+          if (name === 'AskUserQuestion' || name === 'Task') {
+            return [{ type: 'tool.use', name, input }];
+          }
+
+          return [{ type: 'tool.use', name, input, displayText: `${name}\n` }];
+        }
+        return [];
+      }
+
       return [];
     }
 
-    if (eventType === 'content_block_start') {
-      const contentBlock = asObject(event?.content_block);
-      if (asString(contentBlock?.type) === 'tool_use') {
-        const name = asString(contentBlock?.name) ?? 'tool';
-        const blockId = asString(contentBlock?.id);
-        return [
-          {
-            type: 'tool.use',
-            name,
-            input: blockId ? { _blockId: blockId } : {},
-            ...(name === 'Task' || name === 'AskUserQuestion'
-              ? {}
-              : { displayText: `${name}\n` }),
-          },
-        ];
-      }
-      return [];
-    }
-
-    return [];
-  }
-
-  if (type === 'assistant') {
-    const message = asObject(obj.message);
-    const content = message?.content;
-    if (Array.isArray(content)) {
-      for (const item of content) {
-        const block = asObject(item);
-        if (asString(block?.type) === 'tool_use' && asString(block?.name) === 'AskUserQuestion') {
-          const input = asObject(block?.input) ?? {};
-          return [
-            {
-              type: 'text.delta',
-              text: `\n<!--ask_user_question:${JSON.stringify(input)}-->\n`,
-            },
-          ];
+    if (type === 'assistant') {
+      const message = asObject(obj.message);
+      const content = message?.content;
+      if (Array.isArray(content)) {
+        for (const item of content) {
+          const block = asObject(item);
+          if (asString(block?.type) === 'tool_use' && asString(block?.name) === 'AskUserQuestion') {
+            const input = asObject(block?.input) ?? {};
+            return [
+              {
+                type: 'text.delta',
+                text: `\n<!--ask_user_question:${JSON.stringify(input)}-->\n`,
+              },
+            ];
+          }
         }
       }
+      return [];
     }
+
+    if (type === 'result') {
+      const subtype = asString(obj.subtype);
+      if (subtype === 'success') {
+        return [{ type: 'turn.complete', reason: 'success' }];
+      }
+      const message = asString(obj.result) ?? 'Claude returned an error';
+      const classified = classifyError(message);
+      return [
+        classified.kind === 'out_of_tokens'
+          ? { type: 'out_of_tokens', message: classified.message }
+          : { type: 'error', message: classified.message },
+        { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+      ];
+    }
+
     return [];
-  }
-
-  if (type === 'result') {
-    const subtype = asString(obj.subtype);
-    if (subtype === 'success') {
-      return [{ type: 'turn.complete', reason: 'success' }];
-    }
-    const message = asString(obj.result) ?? 'Claude returned an error';
-    const classified = classifyError(message);
-    return [
-      classified.kind === 'out_of_tokens'
-        ? { type: 'out_of_tokens', message: classified.message }
-        : { type: 'error', message: classified.message },
-      { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
-    ];
-  }
-
-  return [];
+  };
 }
+
+// Stateless wrapper for non-streaming contexts (e.g. JSONL replay).
+function parseClaude(json: unknown): UnifiedAgentEvent[] {
+  return createClaudeParser()(json);
+}
+
+// Exported for testing.
+export { createClaudeParser };
 
 function parseCodex(json: unknown): UnifiedAgentEvent[] {
   const obj = asObject(json);
@@ -618,6 +666,15 @@ function parseJsonEvent(harness: Harness, json: unknown): UnifiedAgentEvent[] {
 }
 
 /**
+ * Create a stateful parser for a harness. Claude needs cross-event state to
+ * accumulate tool input_json_delta; other harnesses are stateless wrappers.
+ */
+function createParser(harness: Harness): (json: unknown) => UnifiedAgentEvent[] {
+  if (harness === 'claude') return createClaudeParser();
+  return (json: unknown) => parseJsonEvent(harness, json);
+}
+
+/**
  * Spawn an agent CLI process with the correct flags and IO handling.
  *
  * For streaming output, pass onStdout/onStderr callbacks.
@@ -692,6 +749,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   let stdoutBuffer = '';
   let stderrBuffer = '';
   let debugStderrTrailing = '';
+  const parse = createParser(canonicalHarness);
 
   let resolveSessionId!: (value: string) => void;
   const sessionId = new Promise<string>((resolve) => {
@@ -776,7 +834,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       }
 
       maybeUpdateSession(json);
-      for (const event of parseJsonEvent(canonicalHarness, json)) {
+      for (const event of parse(json)) {
         emit(event);
       }
     }
@@ -818,7 +876,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
           try {
             const json = JSON.parse(trailing) as unknown;
             maybeUpdateSession(json);
-            for (const event of parseJsonEvent(canonicalHarness, json)) {
+            for (const event of parse(json)) {
               emit(event);
             }
           } catch {

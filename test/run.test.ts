@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { executeCommand, type UnifiedAgentEvent } from '../src/run';
+import { createClaudeParser, executeCommand, type UnifiedAgentEvent } from '../src/run';
 
 function writeCodexShim(binDir: string): void {
   const shimPath = path.join(binDir, 'codex');
@@ -391,6 +391,69 @@ describe('executeCommand contract', { concurrency: true }, () => {
       .map((event) => event.text)
       .join('');
     assert.match(text, /hi again from gemini/);
+  });
+
+  it('claude parser accumulates input_json_delta and emits tool.use with full input', () => {
+    const parse = createClaudeParser();
+
+    // content_block_start: tool_use with name=Bash — should NOT emit yet
+    const startEvents = parse({
+      type: 'stream_event',
+      event: {
+        type: 'content_block_start',
+        content_block: { type: 'tool_use', id: 'toolu_abc', name: 'Bash' },
+      },
+    });
+    assert.deepStrictEqual(startEvents, [], 'should not emit at content_block_start');
+
+    // content_block_delta: input_json_delta chunks
+    const delta1 = parse({
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'input_json_delta', partial_json: '{"command":"env -u CLAUDECODE' },
+      },
+    });
+    assert.deepStrictEqual(delta1, [], 'should not emit during delta accumulation');
+
+    const delta2 = parse({
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'input_json_delta', partial_json: ' oompa run oompa.json"}' },
+      },
+    });
+    assert.deepStrictEqual(delta2, [], 'should not emit during delta accumulation');
+
+    // content_block_stop: should emit tool.use with full reconstructed input
+    const stopEvents = parse({
+      type: 'stream_event',
+      event: { type: 'content_block_stop' },
+    });
+    assert.strictEqual(stopEvents.length, 1);
+    const toolEvent = stopEvents[0] as Extract<UnifiedAgentEvent, { type: 'tool.use' }>;
+    assert.strictEqual(toolEvent.type, 'tool.use');
+    assert.strictEqual(toolEvent.name, 'Bash');
+    assert.strictEqual(
+      (toolEvent.input as { command: string }).command,
+      'env -u CLAUDECODE oompa run oompa.json',
+    );
+    assert.ok(toolEvent.displayText, 'should have displayText for non-Task tools');
+  });
+
+  it('claude parser still handles text_delta during tool blocks', () => {
+    const parse = createClaudeParser();
+
+    // Text delta should pass through even without any tool block active
+    const textEvents = parse({
+      type: 'stream_event',
+      event: {
+        type: 'content_block_delta',
+        delta: { type: 'text_delta', text: 'hello world' },
+      },
+    });
+    assert.strictEqual(textEvents.length, 1);
+    assert.strictEqual(textEvents[0].type, 'text.delta');
   });
 
   it('agent-cli run can mirror raw gemini events to stderr for debugging', () => {

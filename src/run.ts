@@ -76,6 +76,7 @@ export type UnifiedAgentEvent =
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
   | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }
+  | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
   | { type: 'error'; message: string }
   | { type: 'turn.complete'; reason: CompletionReason }
@@ -616,10 +617,33 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
   if (type === 'init') return [{ type: 'turn.started' }];
 
   if (type === 'message') {
-    if (asString(obj.role) === 'assistant' && asString(obj.content)) {
-      return [{ type: 'text.delta', text: asString(obj.content)! }];
+    const role = asString(obj.role);
+    const content = asString(obj.content);
+    if (role === 'assistant' && content) {
+      return [{ type: 'text.delta', text: content }];
     }
-    return [];
+    // Non-assistant messages (user echo, system, function) must still emit an
+    // event so the server's idle watchdog resets. Previously these returned []
+    // which caused silent gaps that contributed to false stall timeouts.
+    return [
+      {
+        type: 'progress',
+        source: 'gemini.message',
+        data: { role: role ?? 'unknown', hasContent: !!content },
+      },
+    ];
+  }
+
+  // Gemini CLI emits { type: 'error', severity: 'warning'|'error', message: '...' }
+  // for network errors, retries, and warnings. Handle explicitly rather than
+  // falling through to the catchall which includes the full JSON dump.
+  if (type === 'error') {
+    const message = asString(obj.message) ?? asString(obj.error) ?? JSON.stringify(obj);
+    const severity = asString(obj.severity);
+    if (severity === 'warning') {
+      return [{ type: 'progress', source: 'gemini.warning', data: { message } }];
+    }
+    return [{ type: 'error', message }];
   }
 
   if (type === 'tool_use') {
@@ -629,7 +653,18 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
   }
 
   if (type === 'tool_result') {
-    return [];
+    const status = asString(obj.status) ?? 'unknown';
+    const toolId = asString(obj.tool_id) ?? '';
+    return [
+      {
+        type: 'progress',
+        source: 'gemini.tool_result',
+        data: {
+          status,
+          ...(toolId ? { tool_id: toolId } : {}),
+        },
+      },
+    ];
   }
 
   if (type === 'result') {
@@ -785,6 +820,11 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     } else if (event.type === 'error' && completionReason === 'success') {
       completionReason = 'error';
     }
+    // Track whether the provider has produced real content. Heartbeats only
+    // fire after this — otherwise we'd mask an API-level hang as "alive".
+    if (event.type === 'text.delta' || event.type === 'tool.use') {
+      sawMeaningfulContent = true;
+    }
     queue.push(event);
   };
 
@@ -797,6 +837,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   };
 
   const onStdout = (chunk: Buffer): void => {
+    lastStdoutAt = Date.now();
     const text = chunk.toString();
 
     if (request.mode === 'single-shot') {
@@ -849,12 +890,53 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     stderrBuffer += text;
   };
 
+  // ── Heartbeat: keep idle watchdog alive during legitimate tool-execution silence ──
+  //
+  // Gemini CLI emits zero stdout while tools run (can last many minutes).
+  // We emit periodic progress events so the server's idle watchdog resets.
+  //
+  // Only heartbeat after meaningful content (text.delta or tool.use) has been
+  // seen. If only `init` arrived and nothing else, the API stream is likely
+  // hung — let the idle watchdog kill the process rather than life-supporting
+  // a zombie for up to the max-runtime limit.
+  const HEARTBEAT_CHECK_INTERVAL_MS = 30_000;
+  const HEARTBEAT_SILENCE_THRESHOLD_MS = 25_000;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let lastStdoutAt = Date.now();
+  let sawMeaningfulContent = false;
+
+  const startHeartbeat = (): void => {
+    if (request.mode !== 'conversation') return;
+    heartbeatTimer = setInterval(() => {
+      // Don't heartbeat if we've never seen real content — that's an API hang,
+      // not a tool execution silence. Let the server's idle watchdog handle it.
+      if (!sawMeaningfulContent) return;
+      const silenceMs = Date.now() - lastStdoutAt;
+      if (silenceMs < HEARTBEAT_SILENCE_THRESHOLD_MS) return;
+      const silentSec = Math.round(silenceMs / 1000);
+      emit({
+        type: 'progress',
+        source: 'agent-cli.heartbeat',
+        data: { silentSeconds: silentSec },
+      });
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+  };
+
+  const stopHeartbeat = (): void => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
+
   const { child, spec, done } = runCommand(request.harness, {
     ...buildOptions,
     detached: request.detached === true,
     onStdout,
     onStderr,
   });
+
+  startHeartbeat();
 
   if (request.detached === true) {
     child.unref();
@@ -867,6 +949,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
   const completed = done
     .then(({ exitCode, spec: doneSpec }) => {
+      stopHeartbeat();
       if (request.mode === 'conversation') {
         const trailing = stdoutBuffer.trim();
         if (trailing) {
@@ -902,16 +985,20 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
           // Conversation mode must end on an explicit terminal event from the harness.
           // Treat a silent process exit as an error to avoid false "success" turns.
           finalReason = 'error';
-          
-          let details = '';
-          if (exitCode !== 0 && exitCode !== null) {
-            const stderrStr = stderrBuffer.trim();
-            if (stderrStr) {
-               const lines = stderrStr.split('\n');
-               details = `: ${lines[lines.length - 1]}`;
-            }
+
+          // Always include available diagnostic context — exit code, last stderr
+          // line, and whether any real content was ever seen. Previously we only
+          // included stderr when exitCode !== 0, which hid clues on clean exits.
+          const parts: string[] = [];
+          if (exitCode !== null && exitCode !== 0) parts.push(`exit=${exitCode}`);
+          if (!sawMeaningfulContent) parts.push('no content ever received');
+          const stderrStr = stderrBuffer.trim();
+          if (stderrStr) {
+            const lines = stderrStr.split('\n');
+            parts.push(lines[lines.length - 1]);
           }
-          
+          const details = parts.length > 0 ? ` (${parts.join('; ')})` : '';
+
           emit({
             type: 'error',
             message: `${request.harness} exited without a terminal turn.complete event${details}`,
@@ -932,6 +1019,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       };
     })
     .catch((err) => {
+      stopHeartbeat();
       emit({
         type: 'error',
         message: `Process failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -950,6 +1038,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     completed,
     stop: (signal?: NodeJS.Signals) => {
       stopRequested = true;
+      stopHeartbeat();
       if (child.exitCode === null && !child.killed) {
         child.kill(signal);
       }

@@ -425,7 +425,7 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
 
   switch (type) {
     case 'thread.started':
-      return [];
+      return [{ type: 'progress', source: 'codex.thread_started' }];
     case 'turn.started':
       return [{ type: 'turn.started' }];
     case 'turn.completed':
@@ -458,12 +458,14 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
         const command = asString(item!.command)!;
         return [{ type: 'tool.use', name: 'shell', input: { command }, displayText: `${command}\n` }];
       }
-      return [];
+      // Non-command item starts (file_change, thinking, etc.) must still emit
+      // an event so the idle watchdog resets. Previously silently dropped.
+      return [{ type: 'progress', source: 'codex.item_started', data: { itemType: asString(item?.type) ?? 'unknown' } }];
     }
     case 'item.completed': {
       const item = asObject(obj.item);
       const itemType = asString(item?.type);
-      if (!itemType) return [];
+      if (!itemType) return [{ type: 'progress', source: 'codex.item_completed', data: { itemType: 'unknown' } }];
 
       if (itemType === 'agent_message' && asString(item?.text)) {
         return [{ type: 'text.delta', text: asString(item!.text)! }];
@@ -498,10 +500,13 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
         return [{ type: 'tool.use', name: 'web_search', input: {} }];
       }
 
-      return [];
+      // Unrecognized item types still reset the watchdog.
+      return [{ type: 'progress', source: 'codex.item_completed', data: { itemType } }];
     }
     default:
-      return [];
+      // Unknown event types still reset the watchdog instead of being silently
+      // dropped. This prevents false stalls from new/unrecognized Codex events.
+      return [{ type: 'progress', source: `codex.${type}` }];
   }
 }
 
@@ -892,15 +897,19 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
   // ── Heartbeat: keep idle watchdog alive during legitimate tool-execution silence ──
   //
-  // Gemini CLI emits zero stdout while tools run (can last many minutes).
+  // Provider CLIs emit zero stdout while tools run (can last many minutes).
   // We emit periodic progress events so the server's idle watchdog resets.
   //
-  // Only heartbeat after meaningful content (text.delta or tool.use) has been
-  // seen. If only `init` arrived and nothing else, the API stream is likely
-  // hung — let the idle watchdog kill the process rather than life-supporting
-  // a zombie for up to the max-runtime limit.
+  // Guards against both false kills and zombie life-support:
+  // 1. Only heartbeat after meaningful content (text.delta/tool.use) — if only
+  //    `init` arrived, the API is likely hung. Let idle watchdog handle it.
+  // 2. Cap total heartbeat duration at HEARTBEAT_MAX_SILENCE_MS. After that,
+  //    stop heartbeating and let the idle watchdog fire. This prevents keeping
+  //    an API-hung-after-content process alive for the full max-runtime (60min).
+  //    Legitimate tool executions rarely exceed 20 minutes.
   const HEARTBEAT_CHECK_INTERVAL_MS = 30_000;
   const HEARTBEAT_SILENCE_THRESHOLD_MS = 25_000;
+  const HEARTBEAT_MAX_SILENCE_MS = 20 * 60_000; // 20 min: stop heartbeating after this
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let lastStdoutAt = Date.now();
   let sawMeaningfulContent = false;
@@ -908,11 +917,16 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const startHeartbeat = (): void => {
     if (request.mode !== 'conversation') return;
     heartbeatTimer = setInterval(() => {
-      // Don't heartbeat if we've never seen real content — that's an API hang,
-      // not a tool execution silence. Let the server's idle watchdog handle it.
       if (!sawMeaningfulContent) return;
       const silenceMs = Date.now() - lastStdoutAt;
       if (silenceMs < HEARTBEAT_SILENCE_THRESHOLD_MS) return;
+      // Stop heartbeating after extended silence — if the provider hasn't
+      // produced stdout in 20 minutes, it's likely an API hang, not tool work.
+      // Let the server's idle watchdog fire and kill the process.
+      if (silenceMs > HEARTBEAT_MAX_SILENCE_MS) {
+        stopHeartbeat();
+        return;
+      }
       const silentSec = Math.round(silenceMs / 1000);
       emit({
         type: 'progress',

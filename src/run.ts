@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import type { BuildOptions, CommandSpec, Harness, HarnessName, GeminiAlias } from './types';
-import { buildCommand } from './build';
-import { canonicalizeHarness } from './harnesses';
+import type { BuildOptions, CommandSpec, Harness, HarnessName, GeminiAlias } from './types.ts';
+import { buildCommand } from './build.ts';
+import { canonicalizeHarness } from './harnesses/index.ts';
 
 /**
  * Options for runCommand — extends BuildOptions with process-level settings.
@@ -1054,7 +1054,14 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       stopRequested = true;
       stopHeartbeat();
       if (child.exitCode === null && !child.killed) {
-        child.kill(signal);
+        // When detached, the child is a process group leader (setsid).
+        // Kill the entire group so tool-call subprocesses die too.
+        const pid = child.pid;
+        if (request.detached && pid != null) {
+          try { process.kill(-pid, signal ?? 'SIGTERM'); } catch {}
+        } else {
+          child.kill(signal);
+        }
       }
     },
   };

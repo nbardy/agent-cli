@@ -1,8 +1,8 @@
-import type { Harness, HarnessConfig, HarnessName } from '../types';
-import { claudeConfig } from './claude';
-import { codexConfig } from './codex';
-import { opencodeConfig } from './opencode';
-import { geminiConfig } from './gemini';
+import type { Harness, HarnessConfig, HarnessName } from '../types.ts';
+import { claudeConfig } from './claude.ts';
+import { codexConfig } from './codex.ts';
+import { opencodeConfig } from './opencode.ts';
+import { geminiConfig } from './gemini.ts';
 
 const geminiAliasPattern = /^gemini\d+$/;
 

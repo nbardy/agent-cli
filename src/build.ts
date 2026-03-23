@@ -1,5 +1,5 @@
-import type { HarnessConfig, BuildOptions, CommandSpec, HarnessName } from './types';
-import { getHarness } from './harnesses';
+import type { HarnessConfig, BuildOptions, CommandSpec, HarnessName } from './types.ts';
+import { getHarness } from './harnesses/index.ts';
 
 /**
  * Build a CLI command from harness name + options.

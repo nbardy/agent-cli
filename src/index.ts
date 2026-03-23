@@ -28,10 +28,10 @@ export type {
   PromptDelivery,
   StdinBehavior,
   StdoutBehavior,
-} from './types';
+} from './types.ts';
 
-export { buildCommand } from './build';
-export { runCommand, executeCommand, executeTurn } from './run';
+export { buildCommand } from './build.ts';
+export { runCommand, executeCommand, executeTurn } from './run.ts';
 export type {
   RunOptions,
   RunResult,
@@ -46,6 +46,6 @@ export type {
   CodexReasoningLevel,
   TurnMode,
   CompletionReason,
-} from './run';
-export { getHarness, listHarnesses, registry } from './harnesses';
-export { resolveBinary } from './resolve';
+} from './run.ts';
+export { getHarness, listHarnesses, registry } from './harnesses/index.ts';
+export { resolveBinary } from './resolve.ts';

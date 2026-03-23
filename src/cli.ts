@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { buildCommand } from './build';
-import { executeCommand, type ExecuteCommandRequest, type CodexReasoningLevel } from './run';
-import { listHarnesses, getHarness, canonicalizeHarness } from './harnesses';
-import { resolveBinary } from './resolve';
-import type { BuildOptions, HarnessName } from './types';
+import { buildCommand } from './build.ts';
+import { executeCommand, type ExecuteCommandRequest, type CodexReasoningLevel } from './run.ts';
+import { listHarnesses, getHarness, canonicalizeHarness } from './harnesses/index.ts';
+import { resolveBinary } from './resolve.ts';
+import type { BuildOptions, HarnessName } from './types.ts';
 
 const USAGE = `agent-cli — Shared CLI agent invocation tool
 
@@ -192,6 +192,24 @@ async function main(): Promise<void> {
     case 'run': {
       const request = parseRunRequest(rest);
       const handle = executeCommand(request);
+
+      // Stdin EOF lifecycle: when our parent dies (for any reason, including
+      // SIGKILL), the kernel closes its FDs and our stdin gets EOF. Treat
+      // this as "parent is gone" and kill the entire child process group.
+      // Only active in piped mode — interactive TTY use is unaffected.
+      if (!process.stdin.isTTY) {
+        process.stdin.on('end', () => {
+          const pid = handle.child.pid;
+          if (pid != null && handle.child.exitCode === null) {
+            try { process.kill(-pid, 'SIGTERM'); } catch {}
+            setTimeout(() => {
+              try { process.kill(-pid, 'SIGKILL'); } catch {}
+            }, 3000);
+          }
+        });
+        process.stdin.resume();
+      }
+
       for await (const event of handle.events) {
         process.stdout.write(`${JSON.stringify(event)}\n`);
       }

@@ -1,4 +1,4 @@
-import type { HarnessConfig } from '../types';
+import type { HarnessConfig } from '../types.ts';
 
 /**
  * OpenCode CLI harness config.

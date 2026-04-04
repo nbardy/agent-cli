@@ -457,7 +457,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
   });
 
   it('agent-cli run can mirror raw gemini events to stderr for debugging', () => {
-    const cliPath = path.join(process.cwd(), 'dist', 'src', 'cli.js');
+    const cliPath = path.join(process.cwd(), 'src', 'cli.ts');
     const request = {
       harness: 'gemini2',
       mode: 'conversation',
@@ -468,7 +468,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       debugRawEvents: true,
     };
 
-    const result = spawnSync(process.execPath, [cliPath, 'run', '--input', '-'], {
+    const result = spawnSync(process.execPath, ['--experimental-strip-types', cliPath, 'run', '--input', '-'], {
       cwd: process.cwd(),
       env: { ...process.env, PATH: `${tempRoot}:${originalPath}` },
       input: JSON.stringify(request),

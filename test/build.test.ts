@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCommand } from '../src/build';
-import { listHarnesses } from '../src/harnesses';
-import { resolveBinary } from '../src/resolve';
+import { buildCommand } from '../src/build.ts';
+import { listHarnesses } from '../src/harnesses/index.ts';
+import { resolveBinary } from '../src/resolve.ts';
 
 // =============================================================================
 // Claude
@@ -459,9 +459,9 @@ describe('cross-cutting', () => {
     );
   });
 
-  it('listHarnesses returns all four', () => {
+  it('listHarnesses returns all five', () => {
     const harnesses = listHarnesses();
-    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'gemini', 'opencode']);
+    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'cursor', 'gemini', 'opencode']);
   });
 });
 

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createClaudeParser, executeCommand, type UnifiedAgentEvent } from '../src/run';
+import { createClaudeParser, executeCommand, type UnifiedAgentEvent } from '../src/run.ts';
 
 function writeCodexShim(binDir: string): void {
   const shimPath = path.join(binDir, 'codex');

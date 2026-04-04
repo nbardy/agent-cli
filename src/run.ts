@@ -186,13 +186,21 @@ function normalizeType(raw: string | undefined): string | undefined {
   return raw.replace(/-/g, '_').toLowerCase();
 }
 
+// Strip ANSI escape codes (colors, cursor movement, erase sequences)
+// so raw terminal art doesn't pollute JSON parsing or error messages.
+const ANSI_RE = /[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_RE, '');
+}
+
 function looksLikeInteractiveAuthPrompt(text: string): boolean {
-  const normalized = text.toLowerCase();
+  const normalized = stripAnsi(text).toLowerCase();
   return normalized.includes('opening authentication page in your browser')
     || normalized.includes('open authentication page in your browser')
     || normalized.includes('sign in with your browser')
     || normalized.includes('login with your browser')
-    || normalized.includes('authenticate in your browser');
+    || normalized.includes('authenticate in your browser')
+    || normalized.includes('press any key to sign in');
 }
 
 function summarizeRawStdout(harness: string, text: string): string {
@@ -951,10 +959,16 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       const trimmed = line.trim();
       if (!trimmed) continue;
 
+      // Strip ANSI escape codes before parsing — CLIs like cursor emit
+      // colored logos and progress spinners before the JSON stream starts.
+      const cleaned = stripAnsi(trimmed).trim();
+      if (!cleaned) continue; // pure ANSI art / cursor movement — skip
+
       let json: unknown;
       try {
-        json = JSON.parse(trimmed) as unknown;
+        json = JSON.parse(cleaned) as unknown;
       } catch (err) {
+        // Check auth prompt on original (ANSI-laden) text too
         emit({
           type: 'error',
           message: summarizeRawStdout(request.harness, trimmed),

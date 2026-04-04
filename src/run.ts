@@ -69,6 +69,7 @@ export type ExecuteCommandRequest =
   | NonCodexExecuteCommandRequest<'claude'>
   | NonCodexExecuteCommandRequest<'opencode'>
   | NonCodexExecuteCommandRequest<'gemini'>
+  | NonCodexExecuteCommandRequest<'cursor'>
   | NonCodexExecuteCommandRequest<GeminiAlias>;
 
 export type UnifiedAgentEvent =
@@ -235,6 +236,8 @@ function buildModeExtraArgs(
         return codexFullAuto ? ['--full-auto'] : [];
       case 'opencode':
         return [];
+      case 'cursor':
+        return [];
     }
   }
 
@@ -253,6 +256,8 @@ function buildModeExtraArgs(
       return ['--output-format', 'stream-json'];
     case 'opencode':
       return ['--format', 'json'];
+    case 'cursor':
+      return [];
   }
 }
 
@@ -280,7 +285,7 @@ function captureSessionIdFromJson(harness: Harness, json: unknown): string | und
     return asString(obj.session_id) ?? asString(obj.sessionId);
   }
 
-  if (harness === 'gemini') {
+  if (harness === 'gemini' || harness === 'cursor') {
     return asString(obj.session_id) ?? asString(obj.sessionId);
   }
 
@@ -692,6 +697,82 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
   return [{ type: 'error', message: `Gemini emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
 }
 
+function parseCursor(json: unknown): UnifiedAgentEvent[] {
+  const obj = asObject(json);
+  if (!obj) return [{ type: 'error', message: 'Cursor emitted non-object JSON' }];
+
+  const type = asString(obj.type);
+  if (!type) {
+    return [{ type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` }];
+  }
+  
+  if (type === 'init' || type === 'turn.started') return [{ type: 'turn.started' }];
+
+  if (type === 'message' || type === 'text.delta') {
+    const role = asString(obj.role);
+    const content = asString(obj.content) ?? asString(obj.text);
+    if ((!role || role === 'assistant') && content) {
+      return [{ type: 'text.delta', text: content }];
+    }
+    return [
+      {
+        type: 'progress',
+        source: 'cursor.message',
+        data: { role: role ?? 'unknown', hasContent: !!content },
+      },
+    ];
+  }
+
+  if (type === 'error') {
+    const message = asString(obj.message) ?? asString(obj.error) ?? JSON.stringify(obj);
+    const severity = asString(obj.severity);
+    if (severity === 'warning') {
+      return [{ type: 'progress', source: 'cursor.warning', data: { message } }];
+    }
+    return [{ type: 'error', message }];
+  }
+
+  if (type === 'tool_use' || type === 'tool') {
+    const name = asString(obj.tool_name) ?? asString(obj.name) ?? 'tool';
+    const input = asObject(obj.parameters) ?? asObject(obj.input) ?? {};
+    return [{ type: 'tool.use', name, input }];
+  }
+
+  if (type === 'tool_result') {
+    const status = asString(obj.status) ?? 'unknown';
+    const toolId = asString(obj.tool_id) ?? '';
+    return [
+      {
+        type: 'progress',
+        source: 'cursor.tool_result',
+        data: {
+          status,
+          ...(toolId ? { tool_id: toolId } : {}),
+        },
+      },
+    ];
+  }
+
+  if (type === 'result' || type === 'turn.complete') {
+    if (asString(obj.status) === 'success' || asString(obj.reason) === 'success') {
+      return [{ type: 'turn.complete', reason: 'success' }];
+    }
+    const message =
+      asString(obj.error) ??
+      asString(obj.message) ??
+      `Cursor result failed: ${String(obj.status ?? obj.reason ?? 'unknown')}`;
+    const classified = classifyError(message);
+    return [
+      classified.kind === 'out_of_tokens'
+        ? { type: 'out_of_tokens', message: classified.message }
+        : { type: 'error', message: classified.message },
+      { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+    ];
+  }
+
+  return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+}
+
 function parseJsonEvent(harness: Harness, json: unknown): UnifiedAgentEvent[] {
   switch (harness) {
     case 'claude':
@@ -702,6 +783,8 @@ function parseJsonEvent(harness: Harness, json: unknown): UnifiedAgentEvent[] {
       return parseOpenCode(json);
     case 'gemini':
       return parseGemini(json);
+    case 'cursor':
+      return parseCursor(json);
   }
 }
 

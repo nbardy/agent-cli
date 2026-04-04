@@ -17,7 +17,7 @@ Usage:
   agent-cli info <harness>                      Show harness details
 
 Options:
-  --harness <name>         Agent CLI to invoke (claude, codex, opencode, gemini, gemini1, gemini2, gemini3)
+  --harness <name>         Agent CLI to invoke (claude, codex, opencode, gemini, cursor, gemini1, gemini2, gemini3)
   --model <id>             Model identifier (harness-specific)
   --prompt <text>          Prompt text
   --session <id>           Session ID (for create or resume)

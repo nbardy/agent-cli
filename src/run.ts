@@ -1,6 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { BuildOptions, CommandSpec, Harness, HarnessName, GeminiAlias } from './types.ts';
 import { buildCommand } from './build.ts';
+import {
+  HEARTBEAT_CHECK_INTERVAL_MS,
+  HEARTBEAT_MAX_SILENCE_MS,
+  HEARTBEAT_SILENCE_THRESHOLD_MS,
+} from './constants/timeouts.ts';
 import { canonicalizeHarness } from './harnesses/index.ts';
 
 /**
@@ -1004,9 +1009,6 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   //    stop heartbeating and let the idle watchdog fire. This prevents keeping
   //    an API-hung-after-content process alive for the full max-runtime (60min).
   //    Legitimate tool executions rarely exceed 20 minutes.
-  const HEARTBEAT_CHECK_INTERVAL_MS = 30_000;
-  const HEARTBEAT_SILENCE_THRESHOLD_MS = 25_000;
-  const HEARTBEAT_MAX_SILENCE_MS = 20 * 60_000; // 20 min: stop heartbeating after this
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let lastStdoutAt = Date.now();
   let sawMeaningfulContent = false;

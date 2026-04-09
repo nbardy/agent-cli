@@ -3,7 +3,7 @@ import type { HarnessConfig } from '../types.ts';
 export const cursorConfig: HarnessConfig = {
   binary: 'cursor',
   baseCmd: ['agent', '--print', '--output-format', 'stream-json', '--stream-partial-output'],
-  bypassFlags: [],
+  bypassFlags: ['-f'],
   modelFlag: '--model',
   promptVia: 'cli-arg',
   stdin: 'close',

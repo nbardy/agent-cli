@@ -261,6 +261,44 @@ describe('gemini', () => {
 });
 
 // =============================================================================
+// Cursor
+// =============================================================================
+
+describe('cursor', () => {
+  it('builds basic command with stream-json printing flags and positional prompt', () => {
+    const spec = buildCommand('cursor', {
+      model: 'composer-2',
+      prompt: 'hello',
+    });
+    assert.deepStrictEqual(spec.argv, [
+      'cursor', 'agent', '--print', '--output-format', 'stream-json', '--stream-partial-output',
+      '--model', 'composer-2', 'hello',
+    ]);
+    assert.strictEqual(spec.stdin, 'close');
+  });
+
+  it('resume uses --resume with the provided sessionId', () => {
+    const spec = buildCommand('cursor', {
+      model: 'composer-2',
+      prompt: 'continue',
+      sessionId: 'cursor-session',
+      resume: true,
+    });
+    assert.ok(spec.argv.includes('--resume'));
+    assert.ok(spec.argv.includes('cursor-session'));
+    assert.ok(!spec.argv.includes('--session-id'));
+  });
+
+  it('maps bypassPermissions to Cursor force mode', () => {
+    const spec = buildCommand('cursor', {
+      prompt: 'test',
+      bypassPermissions: true,
+    });
+    assert.ok(spec.argv.includes('-f'));
+  });
+});
+
+// =============================================================================
 // Real-world invocation patterns (from oompa + claude-web-view)
 // =============================================================================
 
@@ -537,6 +575,7 @@ describe('model loop', () => {
       'openai/gpt-5',  // legacy format
     ],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+    cursor: ['composer-2'],
   };
 
   for (const [harness, models] of Object.entries(ALL_MODELS)) {

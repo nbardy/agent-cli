@@ -95,6 +95,56 @@ process.exit(0);
   chmodSync(shimPath, 0o755);
 }
 
+function writeCursorShim(binDir: string): void {
+  const shimPath = path.join(binDir, 'cursor');
+  const shimSource = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const prompt = args[args.length - 1] ?? '';
+const resumeIdx = args.indexOf('--resume');
+const resumeSession = resumeIdx >= 0 ? (args[resumeIdx + 1] ?? '') : '';
+const modelIdx = args.indexOf('--model');
+const model = modelIdx >= 0 ? (args[modelIdx + 1] ?? '') : '';
+const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n');
+
+if (prompt === 'cursor-auth-required') {
+  process.stdout.write('\\u001b[38;2;48;48;48m           +i":;;                     \\u001b[39m\\n');
+  process.stdout.write('\\u001b[1mCursor Agent\\u001b[22m\\n');
+  process.stdout.write('\\u001b[32mPress any key to sign in...\\u001b[39m\\n');
+  process.exit(1);
+}
+
+if (prompt === 'cursor-success') {
+  if (model !== 'composer-2') {
+    process.stderr.write('unexpected model: ' + model + '\\n');
+    process.exit(2);
+  }
+  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2', permissionMode: 'default' });
+  emit({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'cursor-success' }] }, session_id: 'cursor-session-1' });
+  emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 1 });
+  emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
+  emit({ type: 'result', subtype: 'success', is_error: false, result: 'hi from cursor', session_id: 'cursor-session-1' });
+  process.exit(0);
+}
+
+if (prompt === 'cursor-resume-success') {
+  if (resumeSession !== 'cursor-session-1') {
+    process.stderr.write('resume mismatch: ' + resumeSession + '\\n');
+    process.exit(3);
+  }
+  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2', permissionMode: 'default' });
+  emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi again from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 2 });
+  emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi again from cursor' }] }, session_id: 'cursor-session-1' });
+  emit({ type: 'result', subtype: 'success', is_error: false, result: 'hi again from cursor', session_id: 'cursor-session-1' });
+  process.exit(0);
+}
+
+process.exit(0);
+`;
+
+  writeFileSync(shimPath, shimSource);
+  chmodSync(shimPath, 0o755);
+}
+
 async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<UnifiedAgentEvent[]> {
   const out: UnifiedAgentEvent[] = [];
   for await (const event of events) {
@@ -114,6 +164,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     mkdirSync(workspace, { recursive: true });
     writeCodexShim(tempRoot);
     writeGeminiShim(tempRoot);
+    writeCursorShim(tempRoot);
     process.env.PATH = `${tempRoot}:${originalPath}`;
   });
 
@@ -391,6 +442,109 @@ describe('executeCommand contract', { concurrency: true }, () => {
       .map((event) => event.text)
       .join('');
     assert.match(text, /hi again from gemini/);
+  });
+
+  it('fails fast on cursor interactive auth stdout without emitting ANSI-art noise', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-auth-required',
+      cwd: workspace,
+      model: 'composer-2',
+      yolo: false,
+    });
+
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'error');
+    const errors = events
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .map((event) => event.message);
+    assert.deepStrictEqual(errors.length, 1, `expected single auth error; got: ${JSON.stringify(errors)}`);
+    assert.match(errors[0], /AUTH_REQUIRED: cursor requested interactive authentication/);
+  });
+
+  it('captures the real cursor session id and normalized tool/text events', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-success',
+      cwd: workspace,
+      model: 'composer-2',
+      yolo: true,
+    });
+
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.ok(turn.spec.argv.includes('-f'));
+    assert.strictEqual(completion.reason, 'success');
+    assert.strictEqual(completion.sessionId, 'cursor-session-1');
+
+    const sessionEvents = events
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> => event.type === 'session.started')
+      .map((event) => event.sessionId);
+    assert.deepStrictEqual(sessionEvents, ['cursor-session-1']);
+
+    const text = events
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .map((event) => event.text)
+      .join('');
+    assert.strictEqual(text, 'hi from cursor');
+
+    const errors = events.filter(
+      (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+    );
+    assert.strictEqual(errors.length, 0);
+  });
+
+  it('resumes cursor with the captured real session id', async () => {
+    const firstTurn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-success',
+      cwd: workspace,
+      model: 'composer-2',
+      yolo: true,
+    });
+
+    const firstCompletion = await firstTurn.completed;
+    assert.strictEqual(firstCompletion.reason, 'success');
+    assert.strictEqual(firstCompletion.sessionId, 'cursor-session-1');
+
+    const resumedTurn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-resume-success',
+      cwd: workspace,
+      model: 'composer-2',
+      resumeSessionId: firstCompletion.sessionId,
+      yolo: true,
+    });
+
+    const eventsPromise = collectEvents(resumedTurn.events);
+    const resumedCompletion = await resumedTurn.completed;
+    const resumedEvents = await eventsPromise;
+
+    assert.strictEqual(resumedTurn.spec.argv[0], 'cursor');
+    assert.ok(resumedTurn.spec.argv.includes('--resume'));
+    assert.ok(resumedTurn.spec.argv.includes('cursor-session-1'));
+    assert.strictEqual(resumedCompletion.reason, 'success');
+    assert.strictEqual(resumedCompletion.sessionId, 'cursor-session-1');
+
+    const errors = resumedEvents
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .map((event) => event.message);
+    assert.deepStrictEqual(errors, []);
+
+    const text = resumedEvents
+      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .map((event) => event.text)
+      .join('');
+    assert.strictEqual(text, 'hi again from cursor');
   });
 
   it('claude parser accumulates input_json_delta and emits tool.use with full input', () => {

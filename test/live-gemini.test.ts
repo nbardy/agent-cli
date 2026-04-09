@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { accessSync, constants } from 'node:fs';
-import { executeCommand, type ExecuteCommandCompletion, type UnifiedAgentEvent } from '../src/run';
+import { executeCommand, type ExecuteCommandCompletion, type UnifiedAgentEvent } from '../src/run.ts';
 
 const liveGeminiEnabled = process.env.AGENT_CLI_LIVE_GEMINI === '1';
 const harness = (process.env.AGENT_CLI_LIVE_GEMINI_HARNESS ?? 'gemini') as 'gemini' | `gemini${number}`;

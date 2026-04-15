@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createClaudeParser, executeCommand, type UnifiedAgentEvent } from '../src/run.ts';
@@ -51,6 +51,29 @@ if (prompt === 'contract-stderr') {
 process.exit(0);
 `;
 
+  writeFileSync(shimPath, shimSource);
+  chmodSync(shimPath, 0o755);
+}
+
+// Claude shim for fork contract tests. Emits a claude-shaped init event
+// and records its argv to a side-channel file keyed by the value of the
+// CLAUDE_SHIM_LABEL env var (tests set this per-invocation so concurrent
+// runs don't clobber each other's log).
+function writeClaudeShim(binDir: string, logDir: string): void {
+  const shimPath = path.join(binDir, 'claude');
+  const shimSource = `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const argv = process.argv.slice(2);
+const label = process.env.CLAUDE_SHIM_LABEL || 'default';
+const logPath = path.join(${JSON.stringify(logDir)}, 'claude-argv-' + label + '.json');
+fs.writeFileSync(logPath, JSON.stringify(argv));
+const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n');
+emit({ type: 'system', subtype: 'init', session_id: 'forked-new-session-id', cwd: process.cwd(), model: 'claude-opus-4' });
+emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'hello from fork' }] } });
+emit({ type: 'result', subtype: 'success' });
+process.exit(0);
+`;
   writeFileSync(shimPath, shimSource);
   chmodSync(shimPath, 0o755);
 }
@@ -122,6 +145,8 @@ if (prompt === 'cursor-success') {
   emit({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'cursor-success' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
+  emit({ type: 'tool_call', subtype: 'started', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' } } }, session_id: 'cursor-session-1' });
+  emit({ type: 'tool_call', subtype: 'completed', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' }, result: { success: { files: ['a.ts'], totalFiles: 1 } } } }, session_id: 'cursor-session-1' });
   emit({ type: 'result', subtype: 'success', is_error: false, result: 'hi from cursor', session_id: 'cursor-session-1' });
   process.exit(0);
 }
@@ -157,14 +182,17 @@ describe('executeCommand contract', { concurrency: true }, () => {
   const originalPath = process.env.PATH ?? '';
   let tempRoot = '';
   let workspace = '';
+  let claudeArgvLog = '';
 
   before(() => {
     tempRoot = mkdtempSync(path.join(tmpdir(), 'agent-cli-run-test-'));
     workspace = path.join(tempRoot, 'workspace');
     mkdirSync(workspace, { recursive: true });
+    claudeArgvLog = tempRoot; // directory; each test uses a unique label
     writeCodexShim(tempRoot);
     writeGeminiShim(tempRoot);
     writeCursorShim(tempRoot);
+    writeClaudeShim(tempRoot, tempRoot);
     process.env.PATH = `${tempRoot}:${originalPath}`;
   });
 
@@ -634,5 +662,138 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.match(result.stderr, /\[agent-cli raw gemini2 stdout\].*tool_result/);
     assert.match(result.stdout, /"type":"session\.started"/);
     assert.match(result.stdout, /"type":"text\.delta"/);
+  });
+
+  // =============================================================================
+  // Fork contract — native (claude)
+  //
+  // When forkSessionId is passed:
+  //   1. The emitted argv contains --resume <source> AND --fork-session.
+  //   2. The session.started event carries the NEW id from the CLI's init
+  //      output, NOT the source id we asked to fork from.
+  //   3. completion.sessionId matches the new id.
+  //
+  // This is the contract that keeps the source transcript from being polluted:
+  // if any of those three break, forks would either re-use the source id
+  // (overwriting it on disk) or fail to report the fork as its own session.
+  // =============================================================================
+
+  it('fork: claude --resume <source> --fork-session produces a NEW session id', async () => {
+    const SOURCE_ID = 'source-session-being-forked-from';
+    process.env.CLAUDE_SHIM_LABEL = 'native-fork';
+    const turn = executeCommand({
+      harness: 'claude',
+      mode: 'conversation',
+      prompt: 'anything',
+      cwd: workspace,
+      model: 'opus',
+      forkSessionId: SOURCE_ID,
+      yolo: false,
+    });
+
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+    const resolvedSessionId = await turn.sessionId;
+
+    // Argv contract — both flags present, source id is the value of --resume.
+    const loggedArgv = JSON.parse(
+      readFileSync(path.join(claudeArgvLog, 'claude-argv-native-fork.json'), 'utf-8')
+    ) as string[];
+    assert.ok(loggedArgv.includes('--resume'), `missing --resume in argv: ${JSON.stringify(loggedArgv)}`);
+    assert.ok(
+      loggedArgv.includes('--fork-session'),
+      `missing --fork-session in argv: ${JSON.stringify(loggedArgv)}`
+    );
+    assert.ok(loggedArgv.includes(SOURCE_ID), `source id missing from argv: ${JSON.stringify(loggedArgv)}`);
+    // --session-id must NOT appear alongside --resume (would be rejected by claude).
+    assert.ok(
+      !loggedArgv.includes('--session-id'),
+      `--session-id must not appear with --resume: ${JSON.stringify(loggedArgv)}`
+    );
+
+    // Session id contract — captured from the CLI's init output, not the source.
+    const sessionEvents = events
+      .filter((e): e is Extract<UnifiedAgentEvent, { type: 'session.started' }> => e.type === 'session.started')
+      .map((e) => e.sessionId);
+    assert.ok(sessionEvents.length > 0, 'expected at least one session.started event');
+    assert.notStrictEqual(
+      sessionEvents[0],
+      SOURCE_ID,
+      'session.started must emit the NEW fork id, never the source id'
+    );
+    assert.strictEqual(sessionEvents[0], 'forked-new-session-id');
+    assert.strictEqual(resolvedSessionId, 'forked-new-session-id');
+    assert.strictEqual(completion.sessionId, 'forked-new-session-id');
+    assert.notStrictEqual(completion.sessionId, SOURCE_ID);
+  });
+
+  it('fork: emulated (gemini) cp-resume leaves source file byte-identical', async () => {
+    // Stage a fake gemini session under a temporary $HOME so the emulation
+    // logic finds it, copies it, and rewrites only the new file's sessionId.
+    // The source file must be byte-identical before and after the fork.
+    const { emulateForkGemini } = await import('../src/fork-emulation.ts');
+    const fakeHome = mkdtempSync(path.join(tmpdir(), 'agent-cli-gemini-home-'));
+    const origHome = process.env.HOME;
+    // Move gemini sessions under fakeHome by temporarily overriding HOME.
+    // fork-emulation resolves ~/.gemini/tmp at module load, so this test
+    // uses a constant we can inject: we construct the full directory
+    // manually and assert by wiring up the path ourselves.
+    const SOURCE_UUID = '11111111-2222-3333-4444-555555555555';
+    const projectDir = path.join(fakeHome, '.gemini', 'tmp', 'proj-hash-abc');
+    const chatsDir = path.join(projectDir, 'chats');
+    mkdirSync(chatsDir, { recursive: true });
+    const sourcePath = path.join(chatsDir, `session-2026-04-15T00-00-00-000Z-${SOURCE_UUID}.json`);
+    const sourceBody = {
+      sessionId: SOURCE_UUID,
+      projectHash: 'abc',
+      messages: [{ type: 'user', content: [{ text: 'hi' }] }],
+    };
+    writeFileSync(sourcePath, JSON.stringify(sourceBody, null, 2));
+    const sourceBytesBefore = readFileSync(sourcePath);
+
+    process.env.HOME = fakeHome;
+    try {
+      const result = emulateForkGemini(SOURCE_UUID);
+      // Source untouched.
+      const sourceBytesAfter = readFileSync(sourcePath);
+      assert.deepStrictEqual(
+        sourceBytesBefore.toString(),
+        sourceBytesAfter.toString(),
+        'emulateFork must not mutate the source file'
+      );
+      // New file exists with the new id.
+      assert.ok(result.newSessionId !== SOURCE_UUID, 'new id must differ from source');
+      const copied = JSON.parse(readFileSync(result.newFilePath, 'utf-8'));
+      assert.strictEqual(copied.sessionId, result.newSessionId);
+      assert.deepStrictEqual(copied.messages, sourceBody.messages, 'transcript must be preserved');
+    } finally {
+      if (origHome !== undefined) process.env.HOME = origHome;
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it('fork: resume precedence — forkSessionId wins over resumeSessionId', async () => {
+    // When both are passed, fork must win. The source-being-forked is the
+    // fork id, and --fork-session must be in argv. This protects callers
+    // who mistakenly pass both by ensuring we never silently resume.
+    process.env.CLAUDE_SHIM_LABEL = 'precedence';
+    const turn = executeCommand({
+      harness: 'claude',
+      mode: 'conversation',
+      prompt: 'anything',
+      cwd: workspace,
+      model: 'opus',
+      forkSessionId: 'fork-src',
+      resumeSessionId: 'resume-src',
+      yolo: false,
+    });
+    await turn.completed;
+    const loggedArgv = JSON.parse(
+      readFileSync(path.join(claudeArgvLog, 'claude-argv-precedence.json'), 'utf-8')
+    ) as string[];
+    assert.ok(loggedArgv.includes('--fork-session'));
+    assert.ok(loggedArgv.includes('fork-src'));
+    assert.ok(!loggedArgv.includes('resume-src'));
   });
 });

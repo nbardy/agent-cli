@@ -1,12 +1,12 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import type { BuildOptions, CommandSpec, Harness, HarnessName, GeminiAlias } from './types.ts';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { buildCommand } from './build.ts';
 import {
   HEARTBEAT_CHECK_INTERVAL_MS,
   HEARTBEAT_MAX_SILENCE_MS,
   HEARTBEAT_SILENCE_THRESHOLD_MS,
 } from './constants/timeouts.ts';
-import { canonicalizeHarness } from './harnesses/index.ts';
+import { canonicalizeHarness, getHarness } from './harnesses/index.ts';
+import type { BuildOptions, CommandSpec, GeminiAlias, Harness, HarnessName } from './types.ts';
 
 /**
  * Options for runCommand — extends BuildOptions with process-level settings.
@@ -207,12 +207,14 @@ function stripAnsi(text: string): string {
 
 function looksLikeInteractiveAuthPrompt(text: string): boolean {
   const normalized = stripAnsi(text).toLowerCase();
-  return normalized.includes('opening authentication page in your browser')
-    || normalized.includes('open authentication page in your browser')
-    || normalized.includes('sign in with your browser')
-    || normalized.includes('login with your browser')
-    || normalized.includes('authenticate in your browser')
-    || normalized.includes('press any key to sign in');
+  return (
+    normalized.includes('opening authentication page in your browser') ||
+    normalized.includes('open authentication page in your browser') ||
+    normalized.includes('sign in with your browser') ||
+    normalized.includes('login with your browser') ||
+    normalized.includes('authenticate in your browser') ||
+    normalized.includes('press any key to sign in')
+  );
 }
 
 function summarizeRawStdout(harness: string, text: string): string {
@@ -264,7 +266,13 @@ function buildModeExtraArgs(
   // conversation mode
   switch (harness) {
     case 'claude': {
-      const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages'];
+      const args = [
+        '-p',
+        '--verbose',
+        '--output-format',
+        'stream-json',
+        '--include-partial-messages',
+      ];
       if (yolo) {
         args.push('--permission-mode', 'bypassPermissions', '--tools', 'default', '--add-dir', cwd);
       }
@@ -425,7 +433,10 @@ function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
         classified.kind === 'out_of_tokens'
           ? { type: 'out_of_tokens', message: classified.message }
           : { type: 'error', message: classified.message },
-        { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+        {
+          type: 'turn.complete',
+          reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+        },
       ];
     }
 
@@ -466,7 +477,10 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
         classified.kind === 'out_of_tokens'
           ? { type: 'out_of_tokens', message: classified.message }
           : { type: 'error', message: classified.message },
-        { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+        {
+          type: 'turn.complete',
+          reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+        },
       ];
     }
     case 'error': {
@@ -481,16 +495,27 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
       const item = asObject(obj.item);
       if (asString(item?.type) === 'command_execution' && asString(item?.command)) {
         const command = asString(item!.command)!;
-        return [{ type: 'tool.use', name: 'shell', input: { command }, displayText: `${command}\n` }];
+        return [
+          { type: 'tool.use', name: 'shell', input: { command }, displayText: `${command}\n` },
+        ];
       }
       // Non-command item starts (file_change, thinking, etc.) must still emit
       // an event so the idle watchdog resets. Previously silently dropped.
-      return [{ type: 'progress', source: 'codex.item_started', data: { itemType: asString(item?.type) ?? 'unknown' } }];
+      return [
+        {
+          type: 'progress',
+          source: 'codex.item_started',
+          data: { itemType: asString(item?.type) ?? 'unknown' },
+        },
+      ];
     }
     case 'item.completed': {
       const item = asObject(obj.item);
       const itemType = asString(item?.type);
-      if (!itemType) return [{ type: 'progress', source: 'codex.item_completed', data: { itemType: 'unknown' } }];
+      if (!itemType)
+        return [
+          { type: 'progress', source: 'codex.item_completed', data: { itemType: 'unknown' } },
+        ];
 
       if (itemType === 'agent_message' && asString(item?.text)) {
         return [{ type: 'text.delta', text: asString(item!.text)! }];
@@ -607,7 +632,10 @@ function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
           classified.kind === 'out_of_tokens'
             ? { type: 'out_of_tokens', message: classified.message }
             : { type: 'error', message: classified.message },
-          { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+          {
+            type: 'turn.complete',
+            reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+          },
         ];
       }
       return [{ type: 'turn.complete', reason: 'success' }];
@@ -619,9 +647,7 @@ function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
       return [{ type: 'turn.complete', reason: 'success' }];
     case 'error': {
       const message =
-        asString(obj.message) ??
-        asString(asObject(obj.error)?.message) ??
-        'OpenCode error';
+        asString(obj.message) ?? asString(asObject(obj.error)?.message) ?? 'OpenCode error';
       const classified = classifyError(message);
       return [
         classified.kind === 'out_of_tokens'
@@ -642,7 +668,9 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
 
   const type = asString(obj.type);
   if (!type) {
-    return [{ type: 'error', message: `Gemini JSON missing required "type": ${JSON.stringify(obj)}` }];
+    return [
+      { type: 'error', message: `Gemini JSON missing required "type": ${JSON.stringify(obj)}` },
+    ];
   }
   if (type === 'init') return [{ type: 'turn.started' }];
 
@@ -710,11 +738,19 @@ function parseGemini(json: unknown): UnifiedAgentEvent[] {
       classified.kind === 'out_of_tokens'
         ? { type: 'out_of_tokens', message: classified.message }
         : { type: 'error', message: classified.message },
-      { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+      {
+        type: 'turn.complete',
+        reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+      },
     ];
   }
 
-  return [{ type: 'error', message: `Gemini emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+  return [
+    {
+      type: 'error',
+      message: `Gemini emitted unrecognized event type "${type}": ${JSON.stringify(obj)}`,
+    },
+  ];
 }
 
 function extractCursorMessageText(obj: Record<string, unknown>): string | undefined {
@@ -744,13 +780,15 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
   let lastAssistantText = '';
 
   return (json: unknown): UnifiedAgentEvent[] => {
-  const obj = asObject(json);
-  if (!obj) return [{ type: 'error', message: 'Cursor emitted non-object JSON' }];
+    const obj = asObject(json);
+    if (!obj) return [{ type: 'error', message: 'Cursor emitted non-object JSON' }];
 
-  const type = asString(obj.type);
-  if (!type) {
-    return [{ type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` }];
-  }
+    const type = asString(obj.type);
+    if (!type) {
+      return [
+        { type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` },
+      ];
+    }
 
     if (type === 'system') {
       const subtype = normalizeType(asString(obj.subtype));
@@ -758,7 +796,9 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
         lastAssistantText = '';
         return [{ type: 'turn.started' }];
       }
-      return [{ type: 'progress', source: 'cursor.system', data: { subtype: subtype ?? 'unknown' } }];
+      return [
+        { type: 'progress', source: 'cursor.system', data: { subtype: subtype ?? 'unknown' } },
+      ];
     }
 
     if (type === 'init' || type === 'turn.started') {
@@ -770,18 +810,31 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
       const content = extractCursorMessageText(obj);
       if (content) {
         if (content === lastAssistantText) return [];
-        const delta = lastAssistantText && content.startsWith(lastAssistantText)
-          ? content.slice(lastAssistantText.length)
-          : content;
+        const delta =
+          lastAssistantText && content.startsWith(lastAssistantText)
+            ? content.slice(lastAssistantText.length)
+            : content;
         lastAssistantText = content;
         return delta ? [{ type: 'text.delta', text: delta }] : [];
       }
-      return [{ type: 'progress', source: 'cursor.message', data: { role: 'assistant', hasContent: false } }];
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.message',
+          data: { role: 'assistant', hasContent: false },
+        },
+      ];
     }
 
     if (type === 'user') {
       const content = extractCursorMessageText(obj);
-      return [{ type: 'progress', source: 'cursor.message', data: { role: 'user', hasContent: !!content } }];
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.message',
+          data: { role: 'user', hasContent: !!content },
+        },
+      ];
     }
 
     if (type === 'message' || type === 'text.delta') {
@@ -852,7 +905,10 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
         classified.kind === 'out_of_tokens'
           ? { type: 'out_of_tokens', message: classified.message }
           : { type: 'error', message: classified.message },
-        { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+        {
+          type: 'turn.complete',
+          reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+        },
       ];
     }
 
@@ -863,7 +919,12 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
       return [];
     }
 
-    return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+    return [
+      {
+        type: 'error',
+        message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}`,
+      },
+    ];
   };
 }
 
@@ -873,7 +934,9 @@ function parseCursor(json: unknown): UnifiedAgentEvent[] {
 
   const type = asString(obj.type);
   if (!type) {
-    return [{ type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` }];
+    return [
+      { type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` },
+    ];
   }
 
   if (type === 'init' || type === 'turn.started') return [{ type: 'turn.started' }];
@@ -941,7 +1004,10 @@ function parseCursor(json: unknown): UnifiedAgentEvent[] {
       classified.kind === 'out_of_tokens'
         ? { type: 'out_of_tokens', message: classified.message }
         : { type: 'error', message: classified.message },
-      { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
+      {
+        type: 'turn.complete',
+        reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error',
+      },
     ];
   }
 
@@ -949,7 +1015,12 @@ function parseCursor(json: unknown): UnifiedAgentEvent[] {
     return [];
   }
 
-  return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+  return [
+    {
+      type: 'error',
+      message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}`,
+    },
+  ];
 }
 
 function parseJsonEvent(harness: Harness, json: unknown): UnifiedAgentEvent[] {
@@ -983,7 +1054,10 @@ function createParser(harness: Harness): (json: unknown) => UnifiedAgentEvent[] 
  * For streaming output, pass onStdout/onStderr callbacks.
  * Without callbacks, stdout/stderr are inherited (pass through to parent).
  */
-export function runCommand(harness: string, options: RunOptions = {}): {
+export function runCommand(
+  harness: string,
+  options: RunOptions = {}
+): {
   child: ChildProcess;
   spec: CommandSpec;
   done: Promise<RunResult>;
@@ -1042,13 +1116,37 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const yolo = request.yolo !== false;
   const codexFullAuto = canonicalHarness === 'codex' && request.fullAuto === true;
   const bypassPermissions = yolo && !(canonicalHarness === 'codex' && codexFullAuto);
-  const forking = !!request.forkSessionId;
+  // Fork dispatch — entirely transparent to the caller. The HarnessConfig
+  // carries the strategy as data (sessionForkFlags XOR emulateFork); we read
+  // it and act. No branching on harness name here.
+  //
+  //   sessionForkFlags present → native: pass fork=true to buildCommand.
+  //   emulateFork present      → emulated: copy source file to a new uuid
+  //                               now, then --resume the copy.
+  //   neither                  → harness cannot fork; throw.
+  let forkingNative = false;
+  let emulatedResumeId: string | undefined;
+  if (request.forkSessionId) {
+    const harnessCfg = getHarness(canonicalHarness);
+    if (harnessCfg.sessionForkFlags) {
+      forkingNative = true;
+    } else if (harnessCfg.emulateFork) {
+      emulatedResumeId = harnessCfg.emulateFork(request.forkSessionId).newSessionId;
+    } else {
+      throw new Error(`Harness "${canonicalHarness}" does not support fork.`);
+    }
+  }
+
+  const forking = forkingNative;
+  const effectiveResumeId = emulatedResumeId ?? request.resumeSessionId;
   const requestedSessionId = forking
     ? request.forkSessionId
-    : (request.resumeSessionId ?? request.sessionId);
-  // When forking, resolvedSessionId starts empty — the NEW session id will be
-  // emitted by the CLI in session.started and captured there. The old id
-  // belongs to the source session and must not be reported as "ours".
+    : (effectiveResumeId ?? request.sessionId);
+  // When forking natively, resolvedSessionId starts empty — the NEW session
+  // id will be emitted by the CLI in session.started and captured there.
+  // The old id belongs to the source session and must not be reported as ours.
+  // For emulated forks we already hold the new id (emulatedResumeId) so we
+  // can seed resolvedSessionId with it and let the CLI confirm via its init.
   const initialSessionId = forking ? null : (requestedSessionId ?? null);
   let resolvedSessionId = forking ? '' : (requestedSessionId ?? '');
   let completionReason: CompletionReason = 'success';
@@ -1075,7 +1173,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     // On resume, sessionId is the existing id being resumed.
     // On create, sessionId is the new id being minted (harness dependent).
     sessionId: forking ? request.forkSessionId : (initialSessionId ?? undefined),
-    resume: !forking && !!request.resumeSessionId,
+    resume: !forking && !!effectiveResumeId,
     fork: forking,
     cwd: request.cwd,
     bypassPermissions,
@@ -1136,7 +1234,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
     if (request.debugRawEvents) {
       for (const line of lines) {
-        process.stderr.write(`[agent-cli raw ${request.harness} stdout] ${line.replace(/\r$/, '')}\n`);
+        process.stderr.write(
+          `[agent-cli raw ${request.harness} stdout] ${line.replace(/\r$/, '')}\n`
+        );
       }
     }
 
@@ -1195,7 +1295,11 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const onStderr = (chunk: Buffer): void => {
     const text = chunk.toString();
     if (request.debugRawEvents) {
-      debugStderrTrailing = mirrorDebugLines(`[agent-cli raw ${request.harness} stderr] `, text, debugStderrTrailing);
+      debugStderrTrailing = mirrorDebugLines(
+        `[agent-cli raw ${request.harness} stderr] `,
+        text,
+        debugStderrTrailing
+      );
     }
     emit({ type: 'stderr', text });
     stderrBuffer += text;
@@ -1280,7 +1384,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
         const trailing = stdoutBuffer.trim();
         if (trailing) {
           if (request.debugRawEvents) {
-            process.stderr.write(`[agent-cli raw ${request.harness} stdout] ${trailing.replace(/\r$/, '')}\n`);
+            process.stderr.write(
+              `[agent-cli raw ${request.harness} stdout] ${trailing.replace(/\r$/, '')}\n`
+            );
           }
           try {
             const json = JSON.parse(trailing) as unknown;
@@ -1383,7 +1489,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
         // Kill the entire group so tool-call subprocesses die too.
         const pid = child.pid;
         if (request.detached && pid != null) {
-          try { process.kill(-pid, signal ?? 'SIGTERM'); } catch {}
+          try {
+            process.kill(-pid, signal ?? 'SIGTERM');
+          } catch {}
         } else {
           child.kill(signal);
         }

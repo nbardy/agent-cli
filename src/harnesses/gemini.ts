@@ -1,4 +1,5 @@
 import type { HarnessConfig } from '../types.ts';
+import { emulateForkGemini } from '../fork-emulation.ts';
 
 /**
  * Gemini CLI harness config.
@@ -27,11 +28,9 @@ export const geminiConfig: HarnessConfig = {
   // same CWD from fighting over a single session.
   sessionResumeFlags: (id) => ['--resume', id],
 
-  // TBD: native non-interactive fork.
   // Gemini has no --fork equivalent — `--resume` mutates the original
-  // session. Callers wanting to fork must emulate: copy the session file
-  // under ~/.gemini/tmp/<project>/chats/ to a new uuid, then resume the
-  // copy. Leaving sessionForkFlags undefined so buildCommand({ fork: true })
-  // throws and forces explicit cp+resume by the caller.
-  // sessionForkFlags: (id) => [...],
+  // session. We fork by copying the session file under
+  // ~/.gemini/tmp/<projectHash>/chats/ to a fresh uuid (rewriting the
+  // top-level sessionId), then --resume the copy. See fork-emulation.ts.
+  emulateFork: (sourceSessionId) => emulateForkGemini(sourceSessionId),
 };

@@ -110,19 +110,31 @@ export interface HarnessConfig {
   readonly sessionResumeFlags?: (sessionId: string) => readonly string[];
 
   /**
-   * Flags for forking a session — resume its full transcript (including tool
-   * calls/results) into a NEW session id, without polluting the original.
+   * Fork strategy — two mutually-exclusive shapes, one per harness:
    *
-   * When defined, the harness natively supports non-interactive fork at the
-   * CLI-flag level (e.g. claude `--resume <id> --fork-session`, opencode
-   * `--session <id> --continue --fork`).
+   *   NATIVE:   sessionForkFlags is set → CLI has a real fork flag
+   *             (claude `--resume <id> --fork-session`, opencode
+   *             `--session <id> --continue --fork`). executeCommand
+   *             passes fork=true to buildCommand and the CLI mints a new id.
    *
-   * When undefined, the caller must emulate fork at runtime (copy the
-   * on-disk session file to a new id, then use sessionResumeFlags on the
-   * copy). See docs/fork.md. Codex + gemini are currently in this bucket —
-   * TBD native support.
+   *   EMULATED: emulateFork is set → no CLI flag exists, so we copy the
+   *             source session file to a new uuid on disk and then --resume
+   *             the copy. Source stays byte-identical. See fork-emulation.ts.
+   *
+   *   NEITHER:  harness does not support fork at all — executeCommand
+   *             throws if a caller passes forkSessionId.
+   *
+   * The two are mutually exclusive by construction: a harness either has
+   * a native fork flag OR needs emulation, never both.
    */
   readonly sessionForkFlags?: (sessionId: string) => readonly string[];
+
+  /**
+   * Emulated-fork implementation for harnesses without a native fork flag.
+   * Called with the SOURCE session id; returns the new session id to --resume.
+   * Must be synchronous (executeCommand is a sync factory).
+   */
+  readonly emulateFork?: (sourceSessionId: string) => { readonly newSessionId: string };
 
   /**
    * Model ID decomposition. Returns the full set of flags for model selection.

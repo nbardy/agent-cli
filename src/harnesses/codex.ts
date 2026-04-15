@@ -1,4 +1,5 @@
 import type { HarnessConfig } from '../types.ts';
+import { emulateForkCodex } from '../fork-emulation.ts';
 
 /**
  * Codex CLI harness config.
@@ -41,14 +42,12 @@ export const codexConfig: HarnessConfig = {
   // These args are inserted right after baseCmd in the build function.
   sessionResumeFlags: (id) => ['resume', id],
 
-  // TBD: native non-interactive fork.
-  // Codex exposes `codex fork <id>` but it is INTERACTIVE only. `codex exec
-  // resume` has no --fork flag. For now, callers wanting to fork a codex
-  // session must emulate: copy the rollout file under ~/.codex/sessions/ to
-  // a new uuid, then resume the copy. Leaving sessionForkFlags undefined so
-  // buildCommand({ fork: true }) throws — forcing callers to use cp+resume
-  // explicitly rather than silently corrupt the original session.
-  // sessionForkFlags: (id) => [...],
+  // Codex has no native non-interactive fork flag (`codex fork` is
+  // interactive, `codex exec resume` has no --fork). We fork by copying
+  // the rollout file under ~/.codex/sessions/YYYY/MM/DD/ to a fresh uuid
+  // (rewriting the first session_meta.payload.id), then --resume the copy.
+  // Source file is untouched. See fork-emulation.ts.
+  emulateFork: (sourceSessionId) => emulateForkCodex(sourceSessionId),
 
   decomposeModel: (modelId) => {
     // Standalone models — pass directly, no effort decomposition

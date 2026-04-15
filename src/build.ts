@@ -37,15 +37,26 @@ export function buildCommand(harness: HarnessName | string, options: BuildOption
  */
 function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandSpec {
   const argv: string[] = [config.binary];
-  const resuming = options.resume === true && !!options.sessionId;
+  const forking = options.fork === true && !!options.sessionId;
+  const resuming = !forking && options.resume === true && !!options.sessionId;
 
   // Subcommand (e.g. 'exec' for codex)
   argv.push(...config.baseCmd);
 
-  // Session resume args go right after baseCmd.
-  // For codex this produces: exec resume <id>
-  // For claude this produces: --resume <id>
-  if (resuming && config.sessionResumeFlags) {
+  // Session fork/resume args go right after baseCmd.
+  // Fork takes precedence — when native fork is unsupported, the caller is
+  // expected to emulate with cp+resume before invoking buildCommand, so a
+  // `fork: true` request on a non-fork-capable harness is an error.
+  if (forking) {
+    if (!config.sessionForkFlags) {
+      throw new Error(
+        `Harness "${config.binary}" does not natively support fork. ` +
+        `Emulate via copy-and-resume (copy the on-disk session file to a ` +
+        `new id, then buildCommand with { resume: true, sessionId: <copy> }).`
+      );
+    }
+    argv.push(...config.sessionForkFlags(options.sessionId!));
+  } else if (resuming && config.sessionResumeFlags) {
     argv.push(...config.sessionResumeFlags(options.sessionId!));
   }
 
@@ -55,7 +66,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
   }
 
   // Working directory via CLI flag (only on first turn, not resume)
-  if (!resuming && config.cwdFlag && options.cwd) {
+  if (!resuming && !forking && config.cwdFlag && options.cwd) {
     argv.push(config.cwdFlag, options.cwd);
   }
 
@@ -83,7 +94,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
   }
 
   // Session create flags (only when NOT resuming)
-  if (!resuming && options.sessionId && config.sessionCreateFlags) {
+  if (!resuming && !forking && options.sessionId && config.sessionCreateFlags) {
     argv.push(...config.sessionCreateFlags(options.sessionId));
   }
 

@@ -24,4 +24,8 @@ export const claudeConfig: HarnessConfig = {
   stdout: 'jsonl',
   sessionCreateFlags: (id) => ['--session-id', id],
   sessionResumeFlags: (id) => ['--resume', id],
+  // Fork: --resume <id> --fork-session assigns a new session id while
+  // inheriting the original transcript (tool_use + tool_result blocks intact).
+  // The original session is left untouched.
+  sessionForkFlags: (id) => ['--resume', id, '--fork-session'],
 };

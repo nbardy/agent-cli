@@ -110,6 +110,21 @@ export interface HarnessConfig {
   readonly sessionResumeFlags?: (sessionId: string) => readonly string[];
 
   /**
+   * Flags for forking a session — resume its full transcript (including tool
+   * calls/results) into a NEW session id, without polluting the original.
+   *
+   * When defined, the harness natively supports non-interactive fork at the
+   * CLI-flag level (e.g. claude `--resume <id> --fork-session`, opencode
+   * `--session <id> --continue --fork`).
+   *
+   * When undefined, the caller must emulate fork at runtime (copy the
+   * on-disk session file to a new id, then use sessionResumeFlags on the
+   * copy). See docs/fork.md. Codex + gemini are currently in this bucket —
+   * TBD native support.
+   */
+  readonly sessionForkFlags?: (sessionId: string) => readonly string[];
+
+  /**
    * Model ID decomposition. Returns the full set of flags for model selection.
    * When provided, replaces the default `[modelFlag, modelId]` behavior.
    *
@@ -149,6 +164,19 @@ export interface BuildOptions {
 
   /** Whether to resume an existing session (vs create new) */
   resume?: boolean;
+
+  /**
+   * Whether to FORK an existing session — inherit its full transcript into a
+   * new session id, leaving the original untouched. Use with sessionId set to
+   * the SOURCE session (the one being forked from).
+   *
+   * Only valid for harnesses that set sessionForkFlags. For harnesses without
+   * native support (codex, gemini), caller must emulate via cp+resume before
+   * calling buildCommand — see sessionForkFlags docs on HarnessConfig.
+   *
+   * Mutually exclusive with `resume` — fork takes precedence.
+   */
+  fork?: boolean;
 
   /** Working directory (used with cwdFlag or passed to process options) */
   cwd?: string;

@@ -26,4 +26,12 @@ export const geminiConfig: HarnessConfig = {
   // Using the actual session ID prevents two conversations with the
   // same CWD from fighting over a single session.
   sessionResumeFlags: (id) => ['--resume', id],
+
+  // TBD: native non-interactive fork.
+  // Gemini has no --fork equivalent — `--resume` mutates the original
+  // session. Callers wanting to fork must emulate: copy the session file
+  // under ~/.gemini/tmp/<project>/chats/ to a new uuid, then resume the
+  // copy. Leaving sessionForkFlags undefined so buildCommand({ fork: true })
+  // throws and forces explicit cp+resume by the caller.
+  // sessionForkFlags: (id) => [...],
 };

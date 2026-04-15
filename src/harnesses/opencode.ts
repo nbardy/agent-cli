@@ -24,6 +24,11 @@ export const opencodeConfig: HarnessConfig = {
   sessionResumeFlags: (id) =>
     id.startsWith('ses_') ? ['--session', id, '--continue'] : [],
 
+  // Fork: --session <id> --continue --fork inherits the transcript into a
+  // new session id. Same ses_ prefix guard as resume.
+  sessionForkFlags: (id) =>
+    id.startsWith('ses_') ? ['--session', id, '--continue', '--fork'] : [],
+
   decomposeModel: (modelId) => {
     // Legacy format normalization: openai/ → opencode/
     const normalized = modelId.startsWith('openai/')

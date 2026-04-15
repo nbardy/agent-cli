@@ -44,6 +44,22 @@ describe('claude', () => {
     assert.strictEqual(spec.prompt, 'continue');
   });
 
+  it('forks with --resume <id> --fork-session', () => {
+    const spec = buildCommand('claude', {
+      model: 'opus',
+      prompt: 'branch off',
+      sessionId: 'abc-123',
+      fork: true,
+    });
+    assert.ok(spec.argv.includes('--resume'));
+    assert.ok(spec.argv.includes('abc-123'));
+    assert.ok(spec.argv.includes('--fork-session'));
+    assert.ok(
+      !spec.argv.includes('--session-id'),
+      `--session-id must NOT appear in fork command. Got: ${JSON.stringify(spec.argv)}`
+    );
+  });
+
   it('includes bypass flags when requested', () => {
     const spec = buildCommand('claude', {
       prompt: 'test',
@@ -82,6 +98,17 @@ describe('codex', () => {
       '--', 'hello',
     ]);
     assert.strictEqual(spec.stdin, 'close');
+  });
+
+  it('fork throws — codex has no native non-interactive fork (TBD cp+resume)', () => {
+    assert.throws(
+      () => buildCommand('codex', {
+        prompt: 'branch off',
+        sessionId: 'thread-abc',
+        fork: true,
+      }),
+      /does not natively support fork/
+    );
   });
 
   it('resume restructures command: exec resume <id>', () => {
@@ -171,6 +198,28 @@ describe('opencode', () => {
     assert.ok(spec.argv.includes('--continue'));
   });
 
+  it('forks with --session <id> --continue --fork', () => {
+    const spec = buildCommand('opencode', {
+      prompt: 'branch off',
+      sessionId: 'ses_abc123',
+      fork: true,
+    });
+    assert.ok(spec.argv.includes('--session'));
+    assert.ok(spec.argv.includes('ses_abc123'));
+    assert.ok(spec.argv.includes('--continue'));
+    assert.ok(spec.argv.includes('--fork'));
+  });
+
+  it('skips fork flags for non-ses_ IDs', () => {
+    const spec = buildCommand('opencode', {
+      prompt: 'branch off',
+      sessionId: 'not-a-session',
+      fork: true,
+    });
+    assert.ok(!spec.argv.includes('--session'));
+    assert.ok(!spec.argv.includes('--fork'));
+  });
+
   it('skips resume flags for non-ses_ IDs', () => {
     const spec = buildCommand('opencode', {
       prompt: 'continue',
@@ -225,6 +274,17 @@ describe('gemini', () => {
     });
     assert.ok(spec.argv.includes('--resume'));
     assert.ok(spec.argv.includes('my-session'));
+  });
+
+  it('fork throws — gemini has no native fork (TBD cp+resume)', () => {
+    assert.throws(
+      () => buildCommand('gemini', {
+        prompt: 'branch off',
+        sessionId: 'my-session',
+        fork: true,
+      }),
+      /does not natively support fork/
+    );
   });
 
   it('includes --yolo when bypass requested', () => {

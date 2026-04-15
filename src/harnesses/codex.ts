@@ -41,6 +41,15 @@ export const codexConfig: HarnessConfig = {
   // These args are inserted right after baseCmd in the build function.
   sessionResumeFlags: (id) => ['resume', id],
 
+  // TBD: native non-interactive fork.
+  // Codex exposes `codex fork <id>` but it is INTERACTIVE only. `codex exec
+  // resume` has no --fork flag. For now, callers wanting to fork a codex
+  // session must emulate: copy the rollout file under ~/.codex/sessions/ to
+  // a new uuid, then resume the copy. Leaving sessionForkFlags undefined so
+  // buildCommand({ fork: true }) throws — forcing callers to use cp+resume
+  // explicitly rather than silently corrupt the original session.
+  // sessionForkFlags: (id) => [...],
+
   decomposeModel: (modelId) => {
     // Standalone models — pass directly, no effort decomposition
     if (STANDALONE_MODELS.has(modelId)) {

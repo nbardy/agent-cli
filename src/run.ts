@@ -45,6 +45,13 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   sessionId?: string;
   /** Existing provider session ID to resume. */
   resumeSessionId?: string;
+  /**
+   * Existing provider session ID to FORK — inherit the full transcript into
+   * a new session without polluting the original. Mutually exclusive with
+   * resumeSessionId; when both are set, fork wins. Requires the harness to
+   * have sessionForkFlags defined (claude, opencode — not codex/gemini yet).
+   */
+  forkSessionId?: string;
   /** True by default: run in maximum non-interactive mode where supported. */
   yolo?: boolean;
   /** Mirror raw provider stdout/stderr to this process stderr for debugging. */
@@ -849,6 +856,13 @@ function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
       ];
     }
 
+    // Cursor --output-format stream-json emits tool_call (started/completed) with full args and
+    // results. We do not map these to tool.use (no stable contract yet); emitting nothing avoids
+    // error spam and huge JSON in downstream UIs.
+    if (type === 'tool_call') {
+      return [];
+    }
+
     return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
   };
 }
@@ -929,6 +943,10 @@ function parseCursor(json: unknown): UnifiedAgentEvent[] {
         : { type: 'error', message: classified.message },
       { type: 'turn.complete', reason: classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error' },
     ];
+  }
+
+  if (type === 'tool_call') {
+    return [];
   }
 
   return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
@@ -1024,9 +1042,15 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const yolo = request.yolo !== false;
   const codexFullAuto = canonicalHarness === 'codex' && request.fullAuto === true;
   const bypassPermissions = yolo && !(canonicalHarness === 'codex' && codexFullAuto);
-  const requestedSessionId = request.resumeSessionId ?? request.sessionId;
-  const initialSessionId = requestedSessionId ?? null;
-  let resolvedSessionId = requestedSessionId ?? '';
+  const forking = !!request.forkSessionId;
+  const requestedSessionId = forking
+    ? request.forkSessionId
+    : (request.resumeSessionId ?? request.sessionId);
+  // When forking, resolvedSessionId starts empty — the NEW session id will be
+  // emitted by the CLI in session.started and captured there. The old id
+  // belongs to the source session and must not be reported as "ours".
+  const initialSessionId = forking ? null : (requestedSessionId ?? null);
+  let resolvedSessionId = forking ? '' : (requestedSessionId ?? '');
   let completionReason: CompletionReason = 'success';
   let completeEventSeen = false;
   let turnStartedSeen = false;
@@ -1047,8 +1071,12 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const buildOptions: BuildOptions = {
     model: request.model,
     prompt: request.prompt,
-    sessionId: initialSessionId ?? undefined,
-    resume: !!request.resumeSessionId,
+    // On fork, sessionId is the SOURCE id (fed to sessionForkFlags).
+    // On resume, sessionId is the existing id being resumed.
+    // On create, sessionId is the new id being minted (harness dependent).
+    sessionId: forking ? request.forkSessionId : (initialSessionId ?? undefined),
+    resume: !forking && !!request.resumeSessionId,
+    fork: forking,
     cwd: request.cwd,
     bypassPermissions,
     extraArgs: [

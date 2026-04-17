@@ -30,8 +30,18 @@ export interface RunResult {
   spec: CommandSpec;
 }
 
-export type CodexReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+// Reasoning effort is PASS-THROUGH. The harness only knows which flag to emit
+// (claude: --effort, codex: -c model_reasoning_effort=). The string value is
+// forwarded verbatim to the CLI, which does the final runtime reject if the
+// value isn't in its accepted set. Callers (or wrapping apps like unleashd)
+// are responsible for validating against per-provider lists before invoking.
+//
+// These type aliases document the CURRENTLY-accepted levels per CLI as of
+// 2026-04 (verified via `claude --help` and `codex exec -c model_reasoning_effort=<bad>`).
+// They are NOT used to constrain the request type — the request accepts any
+// string so the submodule stays flexible as CLIs evolve.
 export type ClaudeReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type CodexReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
 
@@ -62,7 +72,8 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
 };
 
 type CodexExecuteCommandRequest = BaseExecuteCommandRequest<'codex'> & {
-  reasoningEffort?: CodexReasoningLevel;
+  /** Pass-through effort string. See CodexReasoningLevel for CLI-accepted values. */
+  reasoningEffort?: string;
   /**
    * Codex-only automation mode.
    * When true, executeCommand adds `--full-auto` and suppresses
@@ -72,7 +83,8 @@ type CodexExecuteCommandRequest = BaseExecuteCommandRequest<'codex'> & {
 };
 
 type ClaudeExecuteCommandRequest = BaseExecuteCommandRequest<'claude'> & {
-  reasoningEffort?: ClaudeReasoningLevel;
+  /** Pass-through effort string. See ClaudeReasoningLevel for CLI-accepted values. */
+  reasoningEffort?: string;
   fullAuto?: never;
 };
 

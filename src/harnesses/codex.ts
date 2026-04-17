@@ -17,8 +17,11 @@ import { emulateForkCodex } from '../fork-emulation.ts';
  *   -C <path> on first turn only. Omitted on resume (session has its own cwd).
  */
 
-/** Known effort levels for composite model ID decomposition. */
-const EFFORT_LEVELS = new Set(['medium', 'high', 'xhigh']);
+/** Effort levels codex accepts for `-c model_reasoning_effort=`.
+ *  Source: `codex exec -c model_reasoning_effort=<invalid>` rejects with
+ *  "expected one of `none`, `minimal`, `low`, `medium`, `high`, `xhigh`".
+ *  'none' is handled by absence (no `-c` flag emitted), so it's not here. */
+const EFFORT_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
 
 /** Models that pass directly without effort decomposition. */
 const STANDALONE_MODELS = new Set(['gpt-5.3-codex-spark']);

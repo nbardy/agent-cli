@@ -48,6 +48,70 @@ if (prompt === 'contract-stderr') {
   process.exit(0);
 }
 
+if (prompt === 'contract-subagent-tools') {
+  emit({ type: 'thread.started', thread_id: 'thread-subagents' });
+  emit({ type: 'turn.started' });
+  emit({
+    type: 'item.started',
+    item: {
+      id: 'item_1',
+      type: 'collab_tool_call',
+      tool: 'spawn_agent',
+      sender_thread_id: 'thread-subagents',
+      receiver_thread_ids: [],
+      prompt: 'Write file_1.md with test-confirmed',
+      agents_states: {},
+      status: 'in_progress',
+    },
+  });
+  emit({
+    type: 'item.completed',
+    item: {
+      id: 'item_1',
+      type: 'collab_tool_call',
+      tool: 'spawn_agent',
+      sender_thread_id: 'thread-subagents',
+      receiver_thread_ids: ['thread-child-1'],
+      prompt: 'Write file_1.md with test-confirmed',
+      agents_states: {
+        'thread-child-1': { status: 'pending_init', message: null },
+      },
+      status: 'completed',
+    },
+  });
+  emit({
+    type: 'item.started',
+    item: {
+      id: 'item_2',
+      type: 'collab_tool_call',
+      tool: 'wait',
+      sender_thread_id: 'thread-subagents',
+      receiver_thread_ids: ['thread-child-1'],
+      prompt: null,
+      agents_states: {},
+      status: 'in_progress',
+    },
+  });
+  emit({
+    type: 'item.completed',
+    item: {
+      id: 'item_2',
+      type: 'collab_tool_call',
+      tool: 'wait',
+      sender_thread_id: 'thread-subagents',
+      receiver_thread_ids: ['thread-child-1'],
+      prompt: null,
+      agents_states: {
+        'thread-child-1': { status: 'completed', message: 'test-confirmed' },
+      },
+      status: 'completed',
+    },
+  });
+  emit({ type: 'item.completed', item: { type: 'agent_message', text: 'SUBAGENTS_OK' } });
+  emit({ type: 'turn.completed' });
+  process.exit(0);
+}
+
 process.exit(0);
 `;
 
@@ -636,6 +700,42 @@ describe('executeCommand contract', { concurrency: true }, () => {
     });
     assert.strictEqual(textEvents.length, 1);
     assert.strictEqual(textEvents[0].type, 'text.delta');
+  });
+
+  it('codex surfaces collab_tool_call items as tool.use events for sub-agent workflows', async () => {
+    const turn = executeCommand({
+      harness: 'codex',
+      mode: 'conversation',
+      prompt: 'contract-subagent-tools',
+      cwd: workspace,
+      model: 'gpt-5.3-codex',
+      yolo: false,
+    });
+
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'success');
+
+    const toolEvents = events.filter(
+      (event): event is Extract<UnifiedAgentEvent, { type: 'tool.use' }> => event.type === 'tool.use'
+    );
+
+    assert.deepStrictEqual(
+      toolEvents.map((event) => [event.name, event.input._phase]),
+      [
+        ['spawn_agent', 'started'],
+        ['spawn_agent', 'completed'],
+        ['wait', 'started'],
+        ['wait', 'completed'],
+      ]
+    );
+    assert.strictEqual(toolEvents[0].input.prompt, 'Write file_1.md with test-confirmed');
+    assert.deepStrictEqual(toolEvents[1].input.receiver_thread_ids, ['thread-child-1']);
+    assert.deepStrictEqual(toolEvents[3].input.agents_states, {
+      'thread-child-1': { status: 'completed', message: 'test-confirmed' },
+    });
   });
 
   it('agent-cli run can mirror raw gemini events to stderr for debugging', () => {

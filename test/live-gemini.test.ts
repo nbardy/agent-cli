@@ -7,6 +7,7 @@ const liveGeminiEnabled = process.env.AGENT_CLI_LIVE_GEMINI === '1';
 const harness = (process.env.AGENT_CLI_LIVE_GEMINI_HARNESS ?? 'gemini') as 'gemini' | `gemini${number}`;
 const model = process.env.AGENT_CLI_LIVE_GEMINI_MODEL ?? 'gemini-3.1-pro-preview';
 const cwd = process.cwd();
+const HIDE_TEST_PREFIX = '[_HIDE_TEST_]';
 
 function requireBinary(name: string): void {
   const path = process.env.PATH ?? '';
@@ -67,7 +68,7 @@ describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
     const firstTurn = executeCommand({
       harness,
       mode: 'conversation',
-      prompt: 'Reply with exactly FIRST_OK and then stop.',
+      prompt: `${HIDE_TEST_PREFIX}\nReply with exactly FIRST_OK and then stop.`,
       cwd,
       model,
       yolo: false,
@@ -89,7 +90,7 @@ describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
     const resumedTurn = executeCommand({
       harness,
       mode: 'conversation',
-      prompt: 'Reply with exactly RESUME_OK and then stop.',
+      prompt: `${HIDE_TEST_PREFIX}\nReply with exactly RESUME_OK and then stop.`,
       cwd,
       model,
       resumeSessionId: firstCompletion.sessionId,
@@ -116,7 +117,7 @@ describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
     const debugTurn = executeCommand({
       harness,
       mode: 'conversation',
-      prompt: 'Reply with exactly DEBUG_OK and then stop.',
+      prompt: `${HIDE_TEST_PREFIX}\nReply with exactly DEBUG_OK and then stop.`,
       cwd,
       model,
       yolo: false,

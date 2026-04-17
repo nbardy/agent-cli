@@ -10,7 +10,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/../test/*.test.ts",
-    "test:live:gemini": "node scripts/run-live-gemini-test.mjs"
+    "test:live:gemini": "node scripts/run-live-gemini-test.mjs",
+    "test:live:subagents": "node scripts/run-live-subagent-probe.mjs",
+    "manual:capture": "node manual_tests/capture-live-run.mjs",
+    "manual:subagents:codex:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner raw",
+    "manual:subagents:codex:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner shared",
+    "manual:subagents:claude:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness claude --runner raw",
+    "manual:subagents:claude:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness claude --runner shared"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

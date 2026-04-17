@@ -44,6 +44,7 @@ export type {
   ExecuteTurnCompletion,
   ExecuteTurnHandle,
   CodexReasoningLevel,
+  ClaudeReasoningLevel,
   TurnMode,
   CompletionReason,
 } from './run.ts';

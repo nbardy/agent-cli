@@ -31,6 +31,7 @@ export interface RunResult {
 }
 
 export type CodexReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ClaudeReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
 
@@ -70,7 +71,12 @@ type CodexExecuteCommandRequest = BaseExecuteCommandRequest<'codex'> & {
   fullAuto?: boolean;
 };
 
-type NonCodexExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex'>> =
+type ClaudeExecuteCommandRequest = BaseExecuteCommandRequest<'claude'> & {
+  reasoningEffort?: ClaudeReasoningLevel;
+  fullAuto?: never;
+};
+
+type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude'>> =
   BaseExecuteCommandRequest<THarness> & {
     reasoningEffort?: never;
     fullAuto?: never;
@@ -78,11 +84,11 @@ type NonCodexExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex'
 
 export type ExecuteCommandRequest =
   | CodexExecuteCommandRequest
-  | NonCodexExecuteCommandRequest<'claude'>
-  | NonCodexExecuteCommandRequest<'opencode'>
-  | NonCodexExecuteCommandRequest<'gemini'>
-  | NonCodexExecuteCommandRequest<'cursor'>
-  | NonCodexExecuteCommandRequest<GeminiAlias>;
+  | ClaudeExecuteCommandRequest
+  | NoExtraExecuteCommandRequest<'opencode'>
+  | NoExtraExecuteCommandRequest<'gemini'>
+  | NoExtraExecuteCommandRequest<'cursor'>
+  | NoExtraExecuteCommandRequest<GeminiAlias>;
 
 export type UnifiedAgentEvent =
   | { type: 'session.started'; sessionId: string }
@@ -499,6 +505,23 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
           { type: 'tool.use', name: 'shell', input: { command }, displayText: `${command}\n` },
         ];
       }
+      if (asString(item?.type) === 'collab_tool_call') {
+        const name = asString(item?.tool) ?? 'collab_tool';
+        const input: Record<string, unknown> = {};
+        input._phase = 'started';
+        const prompt = asString(item?.prompt);
+        const senderThreadId = asString(item?.sender_thread_id);
+        const status = asString(item?.status);
+        if (prompt) input.prompt = prompt;
+        if (senderThreadId) input.sender_thread_id = senderThreadId;
+        if (status) input.status = status;
+        if (Array.isArray(item?.receiver_thread_ids)) {
+          input.receiver_thread_ids = item.receiver_thread_ids;
+        }
+        const agentStates = asObject(item?.agents_states);
+        if (agentStates) input.agents_states = agentStates;
+        return [{ type: 'tool.use', name, input }];
+      }
       // Non-command item starts (file_change, thinking, etc.) must still emit
       // an event so the idle watchdog resets. Previously silently dropped.
       return [
@@ -548,6 +571,23 @@ function parseCodex(json: unknown): UnifiedAgentEvent[] {
 
       if (itemType === 'web_search') {
         return [{ type: 'tool.use', name: 'web_search', input: {} }];
+      }
+
+      if (itemType === 'collab_tool_call') {
+        const name = asString(item?.tool) ?? 'collab_tool';
+        const input: Record<string, unknown> = { _phase: 'completed' };
+        const prompt = asString(item?.prompt);
+        const senderThreadId = asString(item?.sender_thread_id);
+        const status = asString(item?.status);
+        if (prompt) input.prompt = prompt;
+        if (senderThreadId) input.sender_thread_id = senderThreadId;
+        if (status) input.status = status;
+        if (Array.isArray(item?.receiver_thread_ids)) {
+          input.receiver_thread_ids = item.receiver_thread_ids;
+        }
+        const agentStates = asObject(item?.agents_states);
+        if (agentStates) input.agents_states = agentStates;
+        return [{ type: 'tool.use', name, input }];
       }
 
       // Unrecognized item types still reset the watchdog.
@@ -1182,7 +1222,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       ...(request.extraArgs ?? []),
     ],
   };
-  if (canonicalHarness === 'codex' && request.reasoningEffort) {
+  if ((canonicalHarness === 'codex' || canonicalHarness === 'claude') && request.reasoningEffort) {
     buildOptions.reasoning = request.reasoningEffort;
   }
 

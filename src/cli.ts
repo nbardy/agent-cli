@@ -2,7 +2,12 @@
 
 import { readFileSync } from 'node:fs';
 import { buildCommand } from './build.ts';
-import { executeCommand, type ExecuteCommandRequest, type CodexReasoningLevel } from './run.ts';
+import {
+  executeCommand,
+  type ExecuteCommandRequest,
+  type CodexReasoningLevel,
+  type ClaudeReasoningLevel,
+} from './run.ts';
 import { listHarnesses, getHarness, canonicalizeHarness } from './harnesses/index.ts';
 import { resolveBinary } from './resolve.ts';
 import type { BuildOptions, HarnessName } from './types.ts';
@@ -25,7 +30,7 @@ Options:
   --cwd <path>             Working directory for the agent process
   --bypass-permissions     Include permissions bypass flags
   --debug-events           Mirror raw provider stdout/stderr to stderr during run
-  --reasoning <level>      Reasoning effort level (codex only: medium, high, xhigh, etc.)
+  --reasoning <level>      Reasoning effort level. codex: minimal|low|medium|high|xhigh|max. claude: low|medium|high|xhigh|max.
   --resolve                Resolve binary in argv[0] to absolute path (build only)
   --input <json|->         JSON input (inline or stdin). Shape: { harness, model?, prompt?, ... }
   --extra <args...>        Extra args appended after all generated args (must be last)`;
@@ -154,11 +159,19 @@ function parseRunRequest(rest: string[]): ExecuteCommandRequest {
     ...(opts.resume && opts.session ? { resumeSessionId: opts.session as string } : {}),
   };
 
-  if (canonicalizeHarness(harnessName) === 'codex') {
+  const canonical = canonicalizeHarness(harnessName);
+  if (canonical === 'codex') {
     return {
       ...base,
       harness: 'codex',
       ...(opts.reasoning ? { reasoningEffort: opts.reasoning as CodexReasoningLevel } : {}),
+    };
+  }
+  if (canonical === 'claude') {
+    return {
+      ...base,
+      harness: 'claude',
+      ...(opts.reasoning ? { reasoningEffort: opts.reasoning as ClaudeReasoningLevel } : {}),
     };
   }
 

@@ -599,14 +599,39 @@ describe('reasoning', () => {
     }
   });
 
-  it('reasoning is ignored for non-codex harnesses', () => {
+  it('claude reasoning adds --effort flag', () => {
     const spec = buildCommand('claude', {
       model: 'opus',
       prompt: 'test',
-      reasoning: 'high',  // Claude doesn't support reasoning
+      reasoning: 'high',
     });
-    assert.ok(!spec.argv.includes('-c'));
-    assert.ok(!spec.argv.some(f => f.includes('reasoning')));
+    const effortIdx = spec.argv.indexOf('--effort');
+    assert.ok(effortIdx >= 0, `missing --effort flag: ${JSON.stringify(spec.argv)}`);
+    assert.strictEqual(spec.argv[effortIdx + 1], 'high');
+  });
+
+  it('claude reasoning works for all effort levels', () => {
+    for (const level of ['low', 'medium', 'high', 'xhigh', 'max']) {
+      const spec = buildCommand('claude', {
+        model: 'opus',
+        prompt: 'test',
+        reasoning: level,
+      });
+      const effortIdx = spec.argv.indexOf('--effort');
+      assert.ok(effortIdx >= 0, `missing --effort for ${level}`);
+      assert.strictEqual(spec.argv[effortIdx + 1], level, `wrong effort value for ${level}`);
+    }
+  });
+
+  it('reasoning is ignored for harnesses without reasoningFlags', () => {
+    for (const harness of ['opencode', 'gemini', 'cursor']) {
+      const spec = buildCommand(harness, {
+        prompt: 'test',
+        reasoning: 'high',
+      });
+      assert.ok(!spec.argv.includes('--effort'), `${harness} leaked --effort`);
+      assert.ok(!spec.argv.some(f => f.includes('reasoning')), `${harness} leaked reasoning`);
+    }
   });
 });
 

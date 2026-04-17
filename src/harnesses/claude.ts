@@ -28,4 +28,9 @@ export const claudeConfig: HarnessConfig = {
   // inheriting the original transcript (tool_use + tool_result blocks intact).
   // The original session is left untouched.
   sessionForkFlags: (id) => ['--resume', id, '--fork-session'],
+
+  // Claude CLI accepts --effort <level> with choices:
+  //   low | medium | high | xhigh | max
+  // See `claude --help`. Flag is session-wide and works with -p/--print.
+  reasoningFlags: (level) => ['--effort', level],
 };

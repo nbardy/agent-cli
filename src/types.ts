@@ -148,8 +148,8 @@ export interface HarnessConfig {
 
   /**
    * Reasoning/effort flags. Called when BuildOptions.reasoning is set.
-   * Only codex uses this (for `-c model_reasoning_effort=X`).
-   * Returns flags to append, or empty array if not supported.
+   * Currently used by codex (`-c model_reasoning_effort=X`) and claude
+   * (`--effort X`). Returns flags to append, or empty array if not supported.
    *
    * This is separate from decomposeModel because oompa passes reasoning
    * as a standalone parameter (codex:model:reasoning), while claude-web-view
@@ -197,14 +197,16 @@ export interface BuildOptions {
   bypassPermissions?: boolean;
 
   /**
-   * Reasoning/effort level (codex only).
-   * Adds `-c model_reasoning_effort=X` to the command.
+   * Reasoning/effort level.
+   *   codex  → `-c model_reasoning_effort=X`
+   *   claude → `--effort X`  (low | medium | high | xhigh | max)
    *
    * Two ways to specify effort for codex:
    * 1. Composite model ID: model='gpt-5.3-codex-high' (decomposeModel handles it)
    * 2. Separate reasoning: model='gpt-5.3-codex', reasoning='high' (this field)
    *
    * If the model ID already encodes effort, this field is ignored.
+   * Ignored for harnesses without reasoningFlags (opencode, gemini, cursor).
    */
   reasoning?: string;
 

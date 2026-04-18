@@ -16,6 +16,17 @@ export type ClaudeReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type CodexReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
+export type UnifiedSubagentStatus = 'pending' | 'running' | 'completed' | 'error';
+
+export interface UnifiedSubagentStateEvent {
+  type: 'subagent.state';
+  id: string;
+  status: UnifiedSubagentStatus;
+  parentId?: string;
+  rawStatus?: string;
+  description?: string;
+  message?: string;
+}
 
 type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   harness: THarness;
@@ -61,6 +72,7 @@ export type UnifiedAgentEvent =
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
   | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }
+  | UnifiedSubagentStateEvent
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
   | { type: 'error'; message: string }

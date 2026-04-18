@@ -45,6 +45,8 @@ export type {
   ExecuteTurnHandle,
   CodexReasoningLevel,
   ClaudeReasoningLevel,
+  UnifiedSubagentStatus,
+  UnifiedSubagentStateEvent,
   TurnMode,
   CompletionReason,
 } from './run.ts';

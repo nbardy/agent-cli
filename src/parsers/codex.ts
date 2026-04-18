@@ -1,6 +1,8 @@
 import { failureEvents } from '../diagnostics.ts';
 import { asObject, asString } from '../json-utils.ts';
-import type { UnifiedAgentEvent } from '../runtime-types.ts';
+import type { UnifiedAgentEvent, UnifiedSubagentStatus } from '../runtime-types.ts';
+
+const CODEX_COLLAB_TOOL_NAMES = new Set(['spawn_agent', 'wait', 'send_input']);
 
 function collabToolInput(item: Record<string, unknown>, phase: 'started' | 'completed'): Record<string, unknown> {
   const input: Record<string, unknown> = { _phase: phase };
@@ -14,6 +16,100 @@ function collabToolInput(item: Record<string, unknown>, phase: 'started' | 'comp
   const agentStates = asObject(item.agents_states);
   if (agentStates) input.agents_states = agentStates;
   return input;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function normalizeCodexSubagentStatus(
+  rawStatus: string | undefined,
+  fallback: UnifiedSubagentStatus
+): UnifiedSubagentStatus {
+  if (!rawStatus) return fallback;
+  switch (rawStatus) {
+    case 'pending_init':
+      return 'pending';
+    case 'completed':
+      return 'completed';
+    case 'in_progress':
+    case 'running':
+      return 'running';
+    default:
+      break;
+  }
+
+  const lower = rawStatus.toLowerCase();
+  if (lower.includes('error') || lower.includes('fail') || lower.includes('cancel')) {
+    return 'error';
+  }
+  if (lower.includes('pending')) return 'pending';
+  if (lower.includes('run') || lower.includes('progress')) return 'running';
+  return fallback;
+}
+
+function formatCodexSubagentMessage(
+  toolName: string,
+  rawStatus: string | undefined,
+  message: string | undefined
+): string | undefined {
+  if (message) return message;
+  if (rawStatus === 'pending_init') return 'Pending initialization';
+
+  const lower = rawStatus?.toLowerCase();
+  if (lower) {
+    if (lower.includes('error') || lower.includes('fail') || lower.includes('cancel')) {
+      return 'Error';
+    }
+    if (lower.includes('pending')) return 'Pending';
+  }
+
+  if (rawStatus === 'in_progress' || rawStatus === 'running') {
+    switch (toolName) {
+      case 'spawn_agent':
+        return 'Starting';
+      case 'wait':
+        return 'Waiting';
+      case 'send_input':
+        return 'Sending follow-up';
+      default:
+        return 'Running';
+    }
+  }
+
+  return undefined;
+}
+
+function collabSubagentEvents(item: Record<string, unknown>, phase: 'started' | 'completed'): UnifiedAgentEvent[] {
+  const toolName = asString(item.tool);
+  if (phase !== 'completed' || !toolName || !CODEX_COLLAB_TOOL_NAMES.has(toolName)) return [];
+
+  const childIds = new Set(asStringArray(item.receiver_thread_ids));
+  const agentStates = asObject(item.agents_states);
+  if (agentStates) {
+    for (const threadId of Object.keys(agentStates)) childIds.add(threadId);
+  }
+  if (childIds.size === 0) return [];
+
+  const parentId = asString(item.sender_thread_id);
+  const description = asString(item.prompt);
+  const fallbackStatus: UnifiedSubagentStatus = toolName === 'spawn_agent' ? 'pending' : 'running';
+
+  return [...childIds].map((id) => {
+    const state = asObject(agentStates?.[id]);
+    const rawStatus = asString(state?.status);
+    const message = formatCodexSubagentMessage(toolName, rawStatus, asString(state?.message));
+    return {
+      type: 'subagent.state',
+      id,
+      status: normalizeCodexSubagentStatus(rawStatus, fallbackStatus),
+      ...(parentId ? { parentId } : {}),
+      ...(rawStatus ? { rawStatus } : {}),
+      ...(description ? { description } : {}),
+      ...(message ? { message } : {}),
+    };
+  });
 }
 
 export function parseCodex(json: unknown): UnifiedAgentEvent[] {
@@ -44,7 +140,10 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
         return [{ type: 'tool.use', name: 'shell', input: { command }, displayText: `${command}\n` }];
       }
       if (asString(item?.type) === 'collab_tool_call') {
-        return [{ type: 'tool.use', name: asString(item?.tool) ?? 'collab_tool', input: collabToolInput(item!, 'started') }];
+        return [
+          { type: 'tool.use', name: asString(item?.tool) ?? 'collab_tool', input: collabToolInput(item!, 'started') },
+          ...collabSubagentEvents(item!, 'started'),
+        ];
       }
       return [{ type: 'progress', source: 'codex.item_started', data: { itemType: asString(item?.type) ?? 'unknown' } }];
     }
@@ -70,7 +169,10 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
         return [{ type: 'tool.use', name: 'web_search', input: {} }];
       }
       if (itemType === 'collab_tool_call') {
-        return [{ type: 'tool.use', name: asString(item?.tool) ?? 'collab_tool', input: collabToolInput(item!, 'completed') }];
+        return [
+          { type: 'tool.use', name: asString(item?.tool) ?? 'collab_tool', input: collabToolInput(item!, 'completed') },
+          ...collabSubagentEvents(item!, 'completed'),
+        ];
       }
       return [{ type: 'progress', source: 'codex.item_completed', data: { itemType } }];
     }

@@ -17,6 +17,8 @@ export type {
   ExecuteTurnHandle,
   CodexReasoningLevel,
   ClaudeReasoningLevel,
+  UnifiedSubagentStatus,
+  UnifiedSubagentStateEvent,
   TurnMode,
   CompletionReason,
 } from './runtime-types.ts';

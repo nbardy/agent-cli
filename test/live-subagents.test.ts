@@ -94,6 +94,8 @@ function summarizeEvents(events: UnifiedAgentEvent[]): string {
       switch (event.type) {
         case 'tool.use':
           return `tool.use:${event.name}`;
+        case 'subagent.state':
+          return `subagent.state:${event.id}:${event.status}`;
         case 'text.delta':
           return `text.delta:${JSON.stringify(event.text.slice(0, 80))}`;
         case 'progress':
@@ -175,6 +177,10 @@ describe('live sub-agent probe', { skip: !liveSubagentsEnabled }, () => {
           (event): event is Extract<UnifiedAgentEvent, { type: 'tool.use' }> =>
             event.type === 'tool.use' && event.name === 'wait'
         );
+        const subagentEvents = events.filter(
+          (event): event is Extract<UnifiedAgentEvent, { type: 'subagent.state' }> =>
+            event.type === 'subagent.state'
+        );
 
         assert.strictEqual(
           spawnEvents.length,
@@ -182,6 +188,11 @@ describe('live sub-agent probe', { skip: !liveSubagentsEnabled }, () => {
           `expected exactly 3 spawn_agent events, got ${spawnEvents.length}`
         );
         assert.ok(waitEvents.length >= 1, 'expected at least one wait event');
+        assert.strictEqual(
+          new Set(subagentEvents.map((event) => event.id)).size,
+          3,
+          `expected 3 distinct subagent.state ids, got ${subagentEvents.map((event) => event.id).join(', ')}`
+        );
 
         for (const index of [1, 2, 3]) {
           const filePath = path.join(outputDir, `file_${index}.md`);

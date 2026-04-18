@@ -12,6 +12,7 @@
     "test": "node --experimental-strip-types --test src/../test/*.test.ts",
     "test:live:gemini": "node scripts/run-live-gemini-test.mjs",
     "test:live:subagents": "node scripts/run-live-subagent-probe.mjs",
+    "test:live:time-effort": "node scripts/run-time-effort-test.mjs",
     "manual:capture": "node manual_tests/capture-live-run.mjs",
     "manual:subagents:codex:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner raw",
     "manual:subagents:codex:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner shared",

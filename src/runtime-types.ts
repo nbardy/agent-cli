@@ -13,7 +13,16 @@ export interface RunResult {
 }
 
 export type ClaudeReasoningLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type CodexReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export const CODEX_REASONING_LEVELS = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+] as const;
+export type CodexReasoningLevel = (typeof CODEX_REASONING_LEVELS)[number];
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
 export type UnifiedSubagentStatus = 'pending' | 'running' | 'completed' | 'error';

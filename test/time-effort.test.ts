@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { accessSync, constants, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  CODEX_REASONING_LEVELS,
   executeCommand,
   type ClaudeReasoningLevel,
   type CodexReasoningLevel,
@@ -23,14 +24,19 @@ const claudeModel = process.env.AGENT_CLI_TIME_EFFORT_CLAUDE_MODEL ?? 'sonnet';
 const codexModel = process.env.AGENT_CLI_TIME_EFFORT_CODEX_MODEL ?? 'gpt-5.4-mini';
 const outDir =
   process.env.AGENT_CLI_TIME_EFFORT_OUT ??
-  path.join(process.cwd(), 'manual_tests', 'runs', `time-effort-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+  path.join(
+    process.cwd(),
+    'manual_tests',
+    'runs',
+    `time-effort-${new Date().toISOString().replace(/[:.]/g, '-')}`
+  );
 
 // Ground truth. sqrt(79/131) = 0.776565151880... — the trailing decimals
 // are fine to a reasonable precision for our distance metric.
 const TRUE_SQRT = 0.77656515188;
 
 const CLAUDE_LEVELS: readonly ClaudeReasoningLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
-const CODEX_LEVELS: readonly CodexReasoningLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+const CODEX_LEVELS: readonly CodexReasoningLevel[] = CODEX_REASONING_LEVELS;
 
 const HIDE_TEST_PREFIX = '[_HIDE_TEST_]';
 const PROMPT = [
@@ -194,11 +200,7 @@ async function runSample(
   return { sampleIndex, wallMs, reason, answer, distance, textSnippet: snippet };
 }
 
-async function runEffort(
-  harness: HarnessName,
-  level: string,
-  n: number
-): Promise<EffortResult> {
+async function runEffort(harness: HarnessName, level: string, n: number): Promise<EffortResult> {
   const samplesOut: SampleResult[] = [];
   for (let i = 0; i < n; i += 1) {
     const result = await runSample(harness, level, i);
@@ -265,7 +267,10 @@ function formatSvgChart(
   const plotHeight = height - marginTop - marginBottom;
   const defined = points
     .map((p, i) => ({ ...p, i }))
-    .filter((p): p is { label: string; value: number; i: number } => p.value !== null && Number.isFinite(p.value));
+    .filter(
+      (p): p is { label: string; value: number; i: number } =>
+        p.value !== null && Number.isFinite(p.value)
+    );
   const maxValue = defined.length > 0 ? Math.max(...defined.map((p) => p.value)) : 1;
   const xStep = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
 
@@ -327,15 +332,9 @@ function csvEscape(value: string | number | null): string {
 }
 
 function toCsv(all: readonly EffortResult[]): string {
-  const header = [
-    'harness',
-    'level',
-    'sample',
-    'wall_ms',
-    'answer',
-    'distance',
-    'reason',
-  ].join(',');
+  const header = ['harness', 'level', 'sample', 'wall_ms', 'answer', 'distance', 'reason'].join(
+    ','
+  );
   const rows: string[] = [header];
   for (const effort of all) {
     for (const sample of effort.samples) {

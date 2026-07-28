@@ -31,7 +31,7 @@ export type {
 } from './types.ts';
 
 export { buildCommand } from './build.ts';
-export { runCommand, executeCommand, executeTurn } from './run.ts';
+export { CODEX_REASONING_LEVELS, runCommand, executeCommand, executeTurn } from './run.ts';
 export type {
   RunOptions,
   RunResult,

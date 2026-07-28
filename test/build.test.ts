@@ -1,5 +1,5 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { buildCommand } from '../src/build.ts';
 import { listHarnesses } from '../src/harnesses/index.ts';
 import { resolveBinary } from '../src/resolve.ts';
@@ -16,9 +16,7 @@ describe('claude', () => {
       sessionId: 'abc-123',
     });
     // Prompt NOT in argv because stdin is 'prompt'
-    assert.deepStrictEqual(spec.argv, [
-      'claude', '--model', 'opus', '--session-id', 'abc-123'
-    ]);
+    assert.deepStrictEqual(spec.argv, ['claude', '--model', 'opus', '--session-id', 'abc-123']);
     assert.strictEqual(spec.prompt, 'hello');
     assert.strictEqual(spec.stdin, 'prompt');
   });
@@ -38,9 +36,7 @@ describe('claude', () => {
       `--session-id must NOT appear in resume command. Got: ${JSON.stringify(spec.argv)}`
     );
     // Prompt NOT in argv because stdin is 'prompt'
-    assert.deepStrictEqual(spec.argv, [
-      'claude', '--resume', 'abc-123', '--model', 'opus'
-    ]);
+    assert.deepStrictEqual(spec.argv, ['claude', '--resume', 'abc-123', '--model', 'opus']);
     assert.strictEqual(spec.prompt, 'continue');
   });
 
@@ -91,22 +87,27 @@ describe('codex', () => {
       cwd: '/tmp/work',
     });
     assert.deepStrictEqual(spec.argv, [
-      'codex', 'exec',
-      '-C', '/tmp/work',
-      '-m', 'gpt-5.3-codex', '-c', 'model_reasoning_effort=high',
+      'codex',
+      'exec',
+      '-C',
+      '/tmp/work',
+      '-m',
+      'gpt-5.3-codex-high',
       '--skip-git-repo-check',
-      '--', 'hello',
+      '--',
+      'hello',
     ]);
     assert.strictEqual(spec.stdin, 'close');
   });
 
   it('fork throws — codex has no native non-interactive fork (TBD cp+resume)', () => {
     assert.throws(
-      () => buildCommand('codex', {
-        prompt: 'branch off',
-        sessionId: 'thread-abc',
-        fork: true,
-      }),
+      () =>
+        buildCommand('codex', {
+          prompt: 'branch off',
+          sessionId: 'thread-abc',
+          fork: true,
+        }),
       /does not natively support fork/
     );
   });
@@ -139,13 +140,12 @@ describe('codex', () => {
     );
   });
 
-  it('decomposes composite model IDs', () => {
-    const spec = buildCommand('codex', { model: 'gpt-5.3-codex-high', prompt: 'test' });
+  it('passes suffix-looking model IDs through without guessing reasoning', () => {
+    const spec = buildCommand('codex', { model: 'gpt-example-ultra', prompt: 'test' });
     const mIdx = spec.argv.indexOf('-m');
     assert.notStrictEqual(mIdx, -1);
-    assert.strictEqual(spec.argv[mIdx + 1], 'gpt-5.3-codex');
-    assert.ok(spec.argv.includes('-c'));
-    assert.ok(spec.argv.includes('model_reasoning_effort=high'));
+    assert.strictEqual(spec.argv[mIdx + 1], 'gpt-example-ultra');
+    assert.ok(!spec.argv.includes('-c'));
   });
 
   it('passes standalone models directly (no decomposition)', () => {
@@ -155,10 +155,18 @@ describe('codex', () => {
     assert.ok(!spec.argv.includes('-c'), 'standalone model should not have -c flag');
   });
 
-  it('decomposes medium and xhigh effort levels', () => {
+  it('passes reasoning independently for medium and xhigh', () => {
     for (const effort of ['medium', 'xhigh']) {
-      const spec = buildCommand('codex', { model: `gpt-5.3-codex-${effort}`, prompt: 'test' });
-      assert.ok(spec.argv.includes(`model_reasoning_effort=${effort}`), `missing effort for ${effort}`);
+      const spec = buildCommand('codex', {
+        model: 'gpt-example-ultra',
+        prompt: 'test',
+        reasoning: effort,
+      });
+      assert.ok(spec.argv.includes('gpt-example-ultra'));
+      assert.ok(
+        spec.argv.includes(`model_reasoning_effort=${effort}`),
+        `missing effort for ${effort}`
+      );
     }
   });
 
@@ -181,9 +189,7 @@ describe('opencode', () => {
       model: 'opencode/big-pickle',
       prompt: 'hello',
     });
-    assert.deepStrictEqual(spec.argv, [
-      'opencode', 'run', '-m', 'opencode/big-pickle', 'hello',
-    ]);
+    assert.deepStrictEqual(spec.argv, ['opencode', 'run', '-m', 'opencode/big-pickle', 'hello']);
     assert.strictEqual(spec.stdin, 'close');
   });
 
@@ -259,9 +265,7 @@ describe('gemini', () => {
       model: 'gemini-2.5-pro',
       prompt: 'hello',
     });
-    assert.deepStrictEqual(spec.argv, [
-      'gemini', '-m', 'gemini-2.5-pro', '-p', 'hello',
-    ]);
+    assert.deepStrictEqual(spec.argv, ['gemini', '-m', 'gemini-2.5-pro', '-p', 'hello']);
     assert.strictEqual(spec.stdin, 'close');
   });
 
@@ -278,11 +282,12 @@ describe('gemini', () => {
 
   it('fork throws — gemini has no native fork (TBD cp+resume)', () => {
     assert.throws(
-      () => buildCommand('gemini', {
-        prompt: 'branch off',
-        sessionId: 'my-session',
-        fork: true,
-      }),
+      () =>
+        buildCommand('gemini', {
+          prompt: 'branch off',
+          sessionId: 'my-session',
+          fork: true,
+        }),
       /does not natively support fork/
     );
   });
@@ -301,9 +306,7 @@ describe('gemini', () => {
       prompt: 'hello',
       sessionId: 'alias-session',
     });
-    assert.deepStrictEqual(spec.argv, [
-      'gemini11', '-m', 'gemini-2.5-pro', '-p', 'hello',
-    ]);
+    assert.deepStrictEqual(spec.argv, ['gemini11', '-m', 'gemini-2.5-pro', '-p', 'hello']);
     assert.strictEqual(spec.stdin, 'close');
   });
 
@@ -331,8 +334,15 @@ describe('cursor', () => {
       prompt: 'hello',
     });
     assert.deepStrictEqual(spec.argv, [
-      'cursor', 'agent', '--print', '--output-format', 'stream-json', '--stream-partial-output',
-      '--model', 'composer-2', 'hello',
+      'cursor',
+      'agent',
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--stream-partial-output',
+      '--model',
+      'composer-2',
+      'hello',
     ]);
     assert.strictEqual(spec.stdin, 'close');
   });
@@ -442,12 +452,17 @@ describe('claude-web-view patterns', () => {
       sessionId: 'conv-uuid',
       bypassPermissions: true,
       extraArgs: [
-        '-p', '--verbose',
-        '--output-format', 'stream-json',
+        '-p',
+        '--verbose',
+        '--output-format',
+        'stream-json',
         '--include-partial-messages',
-        '--permission-mode', 'bypassPermissions',
-        '--tools', 'default',
-        '--add-dir', '/Users/nick/project',
+        '--permission-mode',
+        'bypassPermissions',
+        '--tools',
+        'default',
+        '--add-dir',
+        '/Users/nick/project',
       ],
     });
     assert.ok(spec.argv.includes('--output-format'));
@@ -534,10 +549,7 @@ describe('cross-cutting', () => {
     });
     const lastGeneratedIdx = spec.argv.indexOf('test');
     const extraStartIdx = spec.argv.indexOf('--output-format');
-    assert.ok(
-      extraStartIdx > lastGeneratedIdx,
-      'extraArgs must come after prompt'
-    );
+    assert.ok(extraStartIdx > lastGeneratedIdx, 'extraArgs must come after prompt');
   });
 
   it('prompt field is included in CommandSpec', () => {
@@ -551,10 +563,7 @@ describe('cross-cutting', () => {
   });
 
   it('throws on unknown harness', () => {
-    assert.throws(
-      () => buildCommand('unknown-harness', {}),
-      /Unknown harness/,
-    );
+    assert.throws(() => buildCommand('unknown-harness', {}), /Unknown harness/);
   });
 
   it('listHarnesses returns all five', () => {
@@ -578,14 +587,18 @@ describe('reasoning', () => {
     assert.ok(spec.argv.includes('model_reasoning_effort=high'));
   });
 
-  it('does NOT double-add reasoning when composite ID already encodes it', () => {
+  it('adds reasoning once even when a model ID has an effort-like suffix', () => {
     const spec = buildCommand('codex', {
       model: 'gpt-5.3-codex-high',
       prompt: 'test',
-      reasoning: 'high',  // should be ignored — model ID already has effort
+      reasoning: 'high',
     });
-    const cFlags = spec.argv.filter(f => f.startsWith('model_reasoning_effort='));
-    assert.strictEqual(cFlags.length, 1, `expected 1 reasoning flag, got ${cFlags.length}: ${JSON.stringify(spec.argv)}`);
+    const cFlags = spec.argv.filter((f) => f.startsWith('model_reasoning_effort='));
+    assert.strictEqual(
+      cFlags.length,
+      1,
+      `expected 1 reasoning flag, got ${cFlags.length}: ${JSON.stringify(spec.argv)}`
+    );
   });
 
   it('standalone reasoning works for all effort levels', () => {
@@ -595,7 +608,10 @@ describe('reasoning', () => {
         prompt: 'test',
         reasoning: level,
       });
-      assert.ok(spec.argv.includes(`model_reasoning_effort=${level}`), `missing effort for ${level}`);
+      assert.ok(
+        spec.argv.includes(`model_reasoning_effort=${level}`),
+        `missing effort for ${level}`
+      );
     }
   });
 
@@ -630,7 +646,7 @@ describe('reasoning', () => {
         reasoning: 'high',
       });
       assert.ok(!spec.argv.includes('--effort'), `${harness} leaked --effort`);
-      assert.ok(!spec.argv.some(f => f.includes('reasoning')), `${harness} leaked reasoning`);
+      assert.ok(!spec.argv.some((f) => f.includes('reasoning')), `${harness} leaked reasoning`);
     }
   });
 });
@@ -642,8 +658,12 @@ describe('reasoning', () => {
 describe('model loop', () => {
   // All known model IDs from both codebases
   const ALL_MODELS: Record<string, string[]> = {
-    claude: ['opus', 'sonnet', 'haiku'],
+    claude: ['fable', 'opus', 'sonnet', 'haiku'],
     codex: [
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+      'gpt-5.5',
       'gpt-5.3-codex-high',
       'gpt-5.3-codex-medium',
       'gpt-5.3-codex-xhigh',
@@ -657,7 +677,7 @@ describe('model loop', () => {
       'opencode/gpt-5-nano',
       'opencode/kimi-k2.5-free',
       'opencode/minimax-m2.5-free',
-      'openai/gpt-5',  // legacy format
+      'openai/gpt-5', // legacy format
     ],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
     cursor: ['composer-2'],
@@ -677,12 +697,16 @@ describe('model loop', () => {
         // Model appears in argv (either directly, decomposed, or normalized).
         // OpenCode normalizes openai/X → opencode/X, so check both forms.
         const normalized = model.replace(/^openai\//, 'opencode/');
-        const hasModel = spec.argv.some(a =>
-          a.includes(model) ||
-          a.includes(normalized) ||
-          a.includes(model.split('-').slice(0, -1).join('-'))
+        const hasModel = spec.argv.some(
+          (a) =>
+            a.includes(model) ||
+            a.includes(normalized) ||
+            a.includes(model.split('-').slice(0, -1).join('-'))
         );
-        assert.ok(hasModel, `model "${model}" (or normalized "${normalized}") not found in argv: ${JSON.stringify(spec.argv)}`);
+        assert.ok(
+          hasModel,
+          `model "${model}" (or normalized "${normalized}") not found in argv: ${JSON.stringify(spec.argv)}`
+        );
       });
 
       it(`${harness}/${model}: builds valid resume command`, () => {
@@ -694,14 +718,24 @@ describe('model loop', () => {
         });
         assert.strictEqual(spec.argv[0], harness === 'codex' ? 'codex' : harness);
         // No session-create flags in resume
-        assert.ok(!spec.argv.includes('--session-id'), `--session-id should not appear in resume for ${harness}/${model}`);
+        assert.ok(
+          !spec.argv.includes('--session-id'),
+          `--session-id should not appear in resume for ${harness}/${model}`
+        );
       });
     }
   }
 
   // Codex models with separate reasoning param (oompa style)
-  const CODEX_BASE_MODELS = ['gpt-5.3-codex', 'gpt-5.3-codex-spark'];
-  const REASONING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  const CODEX_BASE_MODELS = [
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+    'gpt-5.5',
+    'gpt-5.3-codex',
+    'gpt-5.3-codex-spark',
+  ];
+  const REASONING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
   for (const model of CODEX_BASE_MODELS) {
     for (const reasoning of REASONING_LEVELS) {
@@ -726,23 +760,35 @@ describe('model loop', () => {
 
 describe('json input', () => {
   it('resume produces correct command (no --session-id)', () => {
-    const spec = buildCommand('claude', { model: 'opus', prompt: 'continue', sessionId: 'abc-123', resume: true });
+    const spec = buildCommand('claude', {
+      model: 'opus',
+      prompt: 'continue',
+      sessionId: 'abc-123',
+      resume: true,
+    });
     assert.ok(!spec.argv.includes('--session-id'));
     assert.ok(spec.argv.includes('--resume'));
     assert.ok(spec.argv.includes('abc-123'));
   });
 
   it('extraArgs are threaded through', () => {
-    const spec = buildCommand('claude', { prompt: 'hello', extraArgs: ['--output-format', 'stream-json'] });
+    const spec = buildCommand('claude', {
+      prompt: 'hello',
+      extraArgs: ['--output-format', 'stream-json'],
+    });
     assert.ok(spec.argv.includes('--output-format'));
     assert.ok(spec.argv.includes('stream-json'));
   });
 
-  it('codex model decomposition with bypass', () => {
-    const spec = buildCommand('codex', { model: 'gpt-5.3-codex-high', prompt: 'fix bug', bypassPermissions: true });
+  it('codex opaque model with bypass', () => {
+    const spec = buildCommand('codex', {
+      model: 'gpt-5.3-codex-high',
+      prompt: 'fix bug',
+      bypassPermissions: true,
+    });
     assert.ok(spec.argv.includes('-m'));
-    assert.ok(spec.argv.includes('gpt-5.3-codex'));
-    assert.ok(spec.argv.includes('model_reasoning_effort=high'));
+    assert.ok(spec.argv.includes('gpt-5.3-codex-high'));
+    assert.ok(!spec.argv.includes('model_reasoning_effort=high'));
     assert.ok(spec.argv.includes('--dangerously-bypass-approvals-and-sandbox'));
   });
 
@@ -768,7 +814,7 @@ describe('resolve', () => {
   it('resolveBinary throws for unknown binary', () => {
     assert.throws(
       () => resolveBinary('nonexistent-binary-that-does-not-exist-12345'),
-      /Binary not found on PATH/,
+      /Binary not found on PATH/
     );
   });
 });

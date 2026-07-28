@@ -286,7 +286,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     stop: (signal?: NodeJS.Signals) => {
       stopRequested = true;
       heartbeat.stop();
-      if (child.exitCode === null && !child.killed) {
+      if (child.exitCode === null) {
         if (request.detached && child.pid != null) {
           try {
             process.kill(-child.pid, signal ?? 'SIGTERM');

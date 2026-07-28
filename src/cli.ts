@@ -2,14 +2,14 @@
 
 import { readFileSync } from 'node:fs';
 import { buildCommand } from './build.ts';
-import {
-  executeCommand,
-  type ExecuteCommandRequest,
-  type CodexReasoningLevel,
-  type ClaudeReasoningLevel,
-} from './run.ts';
-import { listHarnesses, getHarness, canonicalizeHarness } from './harnesses/index.ts';
+import { canonicalizeHarness, getHarness, listHarnesses } from './harnesses/index.ts';
 import { resolveBinary } from './resolve.ts';
+import {
+  type ClaudeReasoningLevel,
+  type CodexReasoningLevel,
+  type ExecuteCommandRequest,
+  executeCommand,
+} from './run.ts';
 import type { BuildOptions, HarnessName } from './types.ts';
 
 const USAGE = `agent-cli — Shared CLI agent invocation tool
@@ -71,14 +71,19 @@ function parseArgs(args: string[]): Record<string, string | boolean | string[]> 
  *
  * JSON shape matches BuildOptions + { harness: string } at top level.
  */
-function parseBuildOptions(rest: string[]): { harness: string; options: BuildOptions; resolve: boolean } {
+function parseBuildOptions(rest: string[]): {
+  harness: string;
+  options: BuildOptions;
+  resolve: boolean;
+} {
   const opts = parseArgs(rest);
 
   // JSON input mode: --input '{"harness":...}' or --input - (stdin)
   if (opts.input !== undefined) {
-    const raw = opts.input === '-'
-      ? readFileSync(0, 'utf-8')  // fd 0 = stdin
-      : opts.input as string;
+    const raw =
+      opts.input === '-'
+        ? readFileSync(0, 'utf-8') // fd 0 = stdin
+        : (opts.input as string);
 
     const json = JSON.parse(raw);
     const harness = json.harness as string;
@@ -128,12 +133,11 @@ function parseBuildOptions(rest: string[]): { harness: string; options: BuildOpt
 
 function parseRunRequest(rest: string[]): ExecuteCommandRequest {
   const opts = parseArgs(rest);
-  const debugRawEvents = opts['debug-events'] === true || process.env.AGENT_CLI_DEBUG_EVENTS === '1';
+  const debugRawEvents =
+    opts['debug-events'] === true || process.env.AGENT_CLI_DEBUG_EVENTS === '1';
 
   if (opts.input !== undefined) {
-    const raw = opts.input === '-'
-      ? readFileSync(0, 'utf-8')
-      : opts.input as string;
+    const raw = opts.input === '-' ? readFileSync(0, 'utf-8') : (opts.input as string);
     const parsed = JSON.parse(raw) as ExecuteCommandRequest;
     return debugRawEvents ? { ...parsed, debugRawEvents: true } : parsed;
   }
@@ -214,9 +218,13 @@ async function main(): Promise<void> {
         process.stdin.on('end', () => {
           const pid = handle.child.pid;
           if (pid != null && handle.child.exitCode === null) {
-            try { process.kill(-pid, 'SIGTERM'); } catch {}
+            try {
+              process.kill(-pid, 'SIGTERM');
+            } catch {}
             setTimeout(() => {
-              try { process.kill(-pid, 'SIGKILL'); } catch {}
+              try {
+                process.kill(-pid, 'SIGKILL');
+              } catch {}
             }, 3000);
           }
         });
@@ -273,15 +281,21 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       const config = getHarness(name);
-      console.log(JSON.stringify({
-        binary: config.binary,
-        baseCmd: config.baseCmd,
-        modelFlag: config.modelFlag,
-        promptVia: config.promptVia,
-        stdin: config.stdin,
-        cwdFlag: config.cwdFlag ?? null,
-        bypassFlags: config.bypassFlags,
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            binary: config.binary,
+            baseCmd: config.baseCmd,
+            modelFlag: config.modelFlag,
+            promptVia: config.promptVia,
+            stdin: config.stdin,
+            cwdFlag: config.cwdFlag ?? null,
+            bypassFlags: config.bypassFlags,
+          },
+          null,
+          2
+        )
+      );
       break;
     }
 

@@ -1,5 +1,5 @@
-import type { HarnessConfig } from '../types.ts';
 import { emulateForkGemini } from '../fork-emulation.ts';
+import type { HarnessConfig } from '../types.ts';
 
 /**
  * Gemini CLI harness config.

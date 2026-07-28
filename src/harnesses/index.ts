@@ -1,9 +1,9 @@
 import type { Harness, HarnessConfig, HarnessName } from '../types.ts';
 import { claudeConfig } from './claude.ts';
 import { codexConfig } from './codex.ts';
-import { opencodeConfig } from './opencode.ts';
-import { geminiConfig } from './gemini.ts';
 import { cursorConfig } from './cursor.ts';
+import { geminiConfig } from './gemini.ts';
+import { opencodeConfig } from './opencode.ts';
 
 const geminiAliasPattern = /^gemini\d+$/;
 
@@ -21,7 +21,7 @@ export function isGeminiAlias(name: string): name is Extract<HarnessName, `gemin
 }
 
 export function canonicalizeHarness(name: HarnessName | string): Harness {
-  return isGeminiAlias(name) ? 'gemini' : name as Harness;
+  return isGeminiAlias(name) ? 'gemini' : (name as Harness);
 }
 
 /** Get a harness config by name. Throws on unknown harness. */

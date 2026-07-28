@@ -1,10 +1,14 @@
-import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { accessSync, constants, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { constants, accessSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { executeCommand, type ExecuteCommandCompletion, type UnifiedAgentEvent } from '../src/run.ts';
+import {
+  type ExecuteCommandCompletion,
+  type UnifiedAgentEvent,
+  executeCommand,
+} from '../src/run.ts';
 
 const liveSubagentsEnabled = process.env.AGENT_CLI_LIVE_SUBAGENTS === '1';
 const harness = (process.env.AGENT_CLI_LIVE_SUBAGENTS_HARNESS ?? 'codex') as 'codex';
@@ -21,14 +25,14 @@ function requireBinary(name: string): void {
     try {
       accessSync(`${dir}/${name}`, constants.X_OK);
       return;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   throw new Error(`Binary not found on PATH: ${name}`);
 }
 
-async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<UnifiedAgentEvent[]> {
+async function collectEvents(
+  events: AsyncIterable<UnifiedAgentEvent>
+): Promise<UnifiedAgentEvent[]> {
   const out: UnifiedAgentEvent[] = [];
   for await (const event of events) out.push(event);
   return out;
@@ -36,7 +40,9 @@ async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<
 
 function errorMessages(events: UnifiedAgentEvent[]): string[] {
   return events
-    .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+    .filter(
+      (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+    )
     .map((event) => event.message);
 }
 

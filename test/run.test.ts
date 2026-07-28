@@ -1,10 +1,10 @@
-import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createClaudeParser, executeCommand, type UnifiedAgentEvent } from '../src/run.ts';
+import { after, before, describe, it } from 'node:test';
+import { type UnifiedAgentEvent, createClaudeParser, executeCommand } from '../src/run.ts';
 
 function writeCodexShim(binDir: string): void {
   const shimPath = path.join(binDir, 'codex');
@@ -286,7 +286,9 @@ process.exit(0);
   chmodSync(shimPath, 0o755);
 }
 
-async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<UnifiedAgentEvent[]> {
+async function collectEvents(
+  events: AsyncIterable<UnifiedAgentEvent>
+): Promise<UnifiedAgentEvent[]> {
   const out: UnifiedAgentEvent[] = [];
   for await (const event of events) {
     out.push(event);
@@ -378,7 +380,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(resolvedSessionId, 'thread-no-complete');
 
     const completionReasons = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'turn.complete' }> => event.type === 'turn.complete')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'turn.complete' }> =>
+          event.type === 'turn.complete'
+      )
       .map((event) => event.reason);
     assert.deepStrictEqual(completionReasons, ['error']);
   });
@@ -404,12 +409,17 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(resolvedSessionId, 'thread-missing-terminal');
 
     const completionReasons = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'turn.complete' }> => event.type === 'turn.complete')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'turn.complete' }> =>
+          event.type === 'turn.complete'
+      )
       .map((event) => event.reason);
     assert.deepStrictEqual(completionReasons, ['error']);
 
     const errors = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+      )
       .map((event) => event.message);
     assert.ok(
       errors.some((message) => message.includes('without a terminal turn.complete event')),
@@ -483,7 +493,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const events = await eventsPromise;
 
     const sessionEvents = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> => event.type === 'session.started')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> =>
+          event.type === 'session.started'
+      )
       .map((event) => event.sessionId);
 
     assert.strictEqual(sessionEvents[0], 'first-turn-session');
@@ -506,7 +519,9 @@ describe('executeCommand contract', { concurrency: true }, () => {
 
     assert.strictEqual(completion.reason, 'error');
     const errors = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+      )
       .map((event) => event.message);
     assert.ok(
       errors.some((message) => message.includes('interactive authentication')),
@@ -532,9 +547,13 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(completion.sessionId, 'gemini-session-1');
 
     const sessionEvents = events.filter(
-      (event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> => event.type === 'session.started'
+      (event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> =>
+        event.type === 'session.started'
     );
-    assert.deepStrictEqual(sessionEvents.map((event) => event.sessionId), ['gemini-session-1']);
+    assert.deepStrictEqual(
+      sessionEvents.map((event) => event.sessionId),
+      ['gemini-session-1']
+    );
 
     const errors = events.filter(
       (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
@@ -577,12 +596,17 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(resumedCompletion.sessionId, 'gemini-session-1');
 
     const errors = resumedEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+      )
       .map((event) => event.message);
     assert.deepStrictEqual(errors, []);
 
     const text = resumedEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> =>
+          event.type === 'text.delta'
+      )
       .map((event) => event.text)
       .join('');
     assert.match(text, /hi again from gemini/);
@@ -604,9 +628,15 @@ describe('executeCommand contract', { concurrency: true }, () => {
 
     assert.strictEqual(completion.reason, 'error');
     const errors = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+      )
       .map((event) => event.message);
-    assert.deepStrictEqual(errors.length, 1, `expected single auth error; got: ${JSON.stringify(errors)}`);
+    assert.deepStrictEqual(
+      errors.length,
+      1,
+      `expected single auth error; got: ${JSON.stringify(errors)}`
+    );
     assert.match(errors[0], /AUTH_REQUIRED: cursor requested interactive authentication/);
   });
 
@@ -629,12 +659,18 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(completion.sessionId, 'cursor-session-1');
 
     const sessionEvents = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> => event.type === 'session.started')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'session.started' }> =>
+          event.type === 'session.started'
+      )
       .map((event) => event.sessionId);
     assert.deepStrictEqual(sessionEvents, ['cursor-session-1']);
 
     const text = events
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> =>
+          event.type === 'text.delta'
+      )
       .map((event) => event.text)
       .join('');
     assert.strictEqual(text, 'hi from cursor');
@@ -680,12 +716,17 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(resumedCompletion.sessionId, 'cursor-session-1');
 
     const errors = resumedEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+      )
       .map((event) => event.message);
     assert.deepStrictEqual(errors, []);
 
     const text = resumedEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> =>
+          event.type === 'text.delta'
+      )
       .map((event) => event.text)
       .join('');
     assert.strictEqual(text, 'hi again from cursor');
@@ -734,7 +775,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(toolEvent.name, 'Bash');
     assert.strictEqual(
       (toolEvent.input as { command: string }).command,
-      'env -u CLAUDECODE oompa run oompa.json',
+      'env -u CLAUDECODE oompa run oompa.json'
     );
     assert.ok(toolEvent.displayText, 'should have displayText for non-Task tools');
   });
@@ -771,7 +812,8 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(completion.reason, 'success');
 
     const toolEvents = events.filter(
-      (event): event is Extract<UnifiedAgentEvent, { type: 'tool.use' }> => event.type === 'tool.use'
+      (event): event is Extract<UnifiedAgentEvent, { type: 'tool.use' }> =>
+        event.type === 'tool.use'
     );
 
     assert.deepStrictEqual(
@@ -852,14 +894,22 @@ describe('executeCommand contract', { concurrency: true }, () => {
       debugRawEvents: true,
     };
 
-    const result = spawnSync(process.execPath, ['--experimental-strip-types', cliPath, 'run', '--input', '-'], {
-      cwd: process.cwd(),
-      env: { ...process.env, PATH: `${tempRoot}:${originalPath}` },
-      input: JSON.stringify(request),
-      encoding: 'utf8',
-    });
+    const result = spawnSync(
+      process.execPath,
+      ['--experimental-strip-types', cliPath, 'run', '--input', '-'],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, PATH: `${tempRoot}:${originalPath}` },
+        input: JSON.stringify(request),
+        encoding: 'utf8',
+      }
+    );
 
-    assert.strictEqual(result.status, 0, `expected successful CLI run, got stderr: ${result.stderr}`);
+    assert.strictEqual(
+      result.status,
+      0,
+      `expected successful CLI run, got stderr: ${result.stderr}`
+    );
     assert.match(result.stderr, /\[agent-cli raw gemini2 stdout\].*session_id/);
     assert.match(result.stderr, /\[agent-cli raw gemini2 stdout\].*tool_result/);
     assert.match(result.stdout, /"type":"session\.started"/);
@@ -902,12 +952,18 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const loggedArgv = JSON.parse(
       readFileSync(path.join(claudeArgvLog, 'claude-argv-native-fork.json'), 'utf-8')
     ) as string[];
-    assert.ok(loggedArgv.includes('--resume'), `missing --resume in argv: ${JSON.stringify(loggedArgv)}`);
+    assert.ok(
+      loggedArgv.includes('--resume'),
+      `missing --resume in argv: ${JSON.stringify(loggedArgv)}`
+    );
     assert.ok(
       loggedArgv.includes('--fork-session'),
       `missing --fork-session in argv: ${JSON.stringify(loggedArgv)}`
     );
-    assert.ok(loggedArgv.includes(SOURCE_ID), `source id missing from argv: ${JSON.stringify(loggedArgv)}`);
+    assert.ok(
+      loggedArgv.includes(SOURCE_ID),
+      `source id missing from argv: ${JSON.stringify(loggedArgv)}`
+    );
     // --session-id must NOT appear alongside --resume (would be rejected by claude).
     assert.ok(
       !loggedArgv.includes('--session-id'),
@@ -916,7 +972,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
 
     // Session id contract — captured from the CLI's init output, not the source.
     const sessionEvents = events
-      .filter((e): e is Extract<UnifiedAgentEvent, { type: 'session.started' }> => e.type === 'session.started')
+      .filter(
+        (e): e is Extract<UnifiedAgentEvent, { type: 'session.started' }> =>
+          e.type === 'session.started'
+      )
       .map((e) => e.sessionId);
     assert.ok(sessionEvents.length > 0, 'expected at least one session.started event');
     assert.notStrictEqual(

@@ -1,15 +1,15 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { accessSync, constants, mkdirSync, writeFileSync } from 'node:fs';
+import { constants, accessSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { describe, it } from 'node:test';
 import {
   CODEX_REASONING_LEVELS,
-  executeCommand,
   type ClaudeReasoningLevel,
   type CodexReasoningLevel,
   type ExecuteCommandCompletion,
   type ExecuteCommandRequest,
   type UnifiedAgentEvent,
+  executeCommand,
 } from '../src/run.ts';
 
 // Live probe: runs real claude + codex harnesses across every reasoning
@@ -77,9 +77,7 @@ function requireBinary(name: string): void {
     try {
       accessSync(`${dir}/${name}`, constants.X_OK);
       return;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   throw new Error(`Binary not found on PATH: ${name}`);
 }
@@ -359,7 +357,7 @@ function toCsv(all: readonly EffortResult[]): string {
 function buildReport(all: readonly EffortResult[]): string {
   const harnessNames: HarnessName[] = ['claude', 'codex'];
   const sections: string[] = [];
-  sections.push(`# time-effort probe`);
+  sections.push('# time-effort probe');
   sections.push('');
   sections.push(`samples-per-effort: ${samples}`);
   sections.push(`per-run-timeout-ms: ${perRunTimeoutMs}`);
@@ -396,8 +394,8 @@ function buildReport(all: readonly EffortResult[]): string {
     sections.push('```');
     sections.push('');
 
-    sections.push(`| level | answered | mean_ms | median_ms | mean_dist | median_dist |`);
-    sections.push(`|---|---|---|---|---|---|`);
+    sections.push('| level | answered | mean_ms | median_ms | mean_dist | median_dist |');
+    sections.push('|---|---|---|---|---|---|');
     for (const r of rows) {
       sections.push(
         `| ${r.level} | ${r.answeredCount}/${r.samples.length} | ${Math.round(r.meanMs)} | ${Math.round(r.medianMs)} | ${r.meanDistance?.toFixed(6) ?? 'n/a'} | ${r.medianDistance?.toFixed(6) ?? 'n/a'} |`

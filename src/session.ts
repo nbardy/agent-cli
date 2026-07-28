@@ -15,17 +15,32 @@ export function prepareSession(request: ExecuteCommandRequest): PreparedSession 
   if (request.forkSessionId) {
     const harnessCfg = getHarness(canonicalHarness);
     if (harnessCfg.sessionForkFlags) {
-      return { buildSessionId: request.forkSessionId, resume: false, fork: true, resolvedSessionId: '' };
+      return {
+        buildSessionId: request.forkSessionId,
+        resume: false,
+        fork: true,
+        resolvedSessionId: '',
+      };
     }
     if (harnessCfg.emulateFork) {
       const { newSessionId } = harnessCfg.emulateFork(request.forkSessionId);
-      return { buildSessionId: newSessionId, resume: true, fork: false, resolvedSessionId: newSessionId };
+      return {
+        buildSessionId: newSessionId,
+        resume: true,
+        fork: false,
+        resolvedSessionId: newSessionId,
+      };
     }
     throw new Error(`Harness "${canonicalHarness}" does not support fork.`);
   }
 
   const buildSessionId = request.resumeSessionId ?? request.sessionId;
-  return { buildSessionId, resume: !!request.resumeSessionId, fork: false, resolvedSessionId: buildSessionId ?? '' };
+  return {
+    buildSessionId,
+    resume: !!request.resumeSessionId,
+    fork: false,
+    resolvedSessionId: buildSessionId ?? '',
+  };
 }
 
 export function captureSessionIdFromJson(harness: Harness, json: unknown): string | undefined {

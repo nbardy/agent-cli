@@ -1,5 +1,3 @@
-import type { BuildOptions } from './types.ts';
-import { canonicalizeHarness } from './harnesses/index.ts';
 import { createAsyncQueue } from './async-queue.ts';
 import {
   flushDebugTrailing,
@@ -8,19 +6,19 @@ import {
   stripAnsi,
   summarizeRawStdout,
 } from './diagnostics.ts';
+import { canonicalizeHarness } from './harnesses/index.ts';
 import { createHeartbeat } from './heartbeat.ts';
-import { asString } from './json-utils.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
-import { createParser, type HarnessParser } from './parsers/index.ts';
+import { type HarnessParser, createParser } from './parsers/index.ts';
 import { runCommand } from './process-runner.ts';
-import { prepareSession, captureSessionIdFromJson } from './session.ts';
 import type {
   CompletionReason,
-  ExecuteCommandCompletion,
   ExecuteCommandHandle,
   ExecuteCommandRequest,
   UnifiedAgentEvent,
 } from './runtime-types.ts';
+import { captureSessionIdFromJson, prepareSession } from './session.ts';
+import type { BuildOptions } from './types.ts';
 
 type Emit = (event: UnifiedAgentEvent) => void;
 
@@ -100,7 +98,8 @@ function createStdoutProcessor(
       if (request.mode !== 'conversation') return;
       const trailing = stdoutBuffer.trim();
       if (trailing) {
-        if (request.debugRawEvents) process.stderr.write(`${rawPrefix}${trailing.replace(/\r$/, '')}\n`);
+        if (request.debugRawEvents)
+          process.stderr.write(`${rawPrefix}${trailing.replace(/\r$/, '')}\n`);
         processJsonLine(trailing);
       }
       if (bufferedRawStdoutLines.length > 0 && !authErrorEmitted) {
@@ -217,7 +216,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       : {}),
   };
 
-  const stdout = createStdoutProcessor(request, parse, emit, updateSession, () => heartbeat.markStdout());
+  const stdout = createStdoutProcessor(request, parse, emit, updateSession, () =>
+    heartbeat.markStdout()
+  );
   const stderr = createStderrProcessor(request, emit);
   const { child, spec, done } = runCommand(request.harness, {
     ...buildOptions,

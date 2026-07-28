@@ -43,7 +43,9 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     if (!obj) return [{ type: 'error', message: 'Cursor emitted non-object JSON' }];
     const type = asString(obj.type);
     if (!type) {
-      return [{ type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` }];
+      return [
+        { type: 'error', message: `Cursor JSON missing required "type": ${JSON.stringify(obj)}` },
+      ];
     }
 
     if (type === 'system') {
@@ -52,7 +54,9 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
         lastAssistantText = '';
         return [{ type: 'turn.started' }];
       }
-      return [{ type: 'progress', source: 'cursor.system', data: { subtype: subtype ?? 'unknown' } }];
+      return [
+        { type: 'progress', source: 'cursor.system', data: { subtype: subtype ?? 'unknown' } },
+      ];
     }
 
     if (type === 'init' || type === 'turn.started') {
@@ -63,16 +67,31 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     if (type === 'assistant') {
       const content = extractMessageText(obj);
       if (!content) {
-        return [{ type: 'progress', source: 'cursor.message', data: { role: 'assistant', hasContent: false } }];
+        return [
+          {
+            type: 'progress',
+            source: 'cursor.message',
+            data: { role: 'assistant', hasContent: false },
+          },
+        ];
       }
       if (content === lastAssistantText) return [];
-      const delta = lastAssistantText && content.startsWith(lastAssistantText) ? content.slice(lastAssistantText.length) : content;
+      const delta =
+        lastAssistantText && content.startsWith(lastAssistantText)
+          ? content.slice(lastAssistantText.length)
+          : content;
       lastAssistantText = content;
       return delta ? [{ type: 'text.delta', text: delta }] : [];
     }
 
     if (type === 'user') {
-      return [{ type: 'progress', source: 'cursor.message', data: { role: 'user', hasContent: !!extractMessageText(obj) } }];
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.message',
+          data: { role: 'user', hasContent: !!extractMessageText(obj) },
+        },
+      ];
     }
 
     if (type === 'message' || type === 'text.delta') {
@@ -81,7 +100,13 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
       if ((type === 'text.delta' || !role || role === 'assistant') && content) {
         return [{ type: 'text.delta', text: content }];
       }
-      return [{ type: 'progress', source: 'cursor.message', data: { role: role ?? 'unknown', hasContent: !!content } }];
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.message',
+          data: { role: role ?? 'unknown', hasContent: !!content },
+        },
+      ];
     }
 
     if (type === 'error') {
@@ -92,12 +117,27 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (type === 'tool_use' || type === 'tool') {
-      return [{ type: 'tool.use', name: asString(obj.tool_name) ?? asString(obj.name) ?? 'tool', input: asObject(obj.parameters) ?? asObject(obj.input) ?? {} }];
+      return [
+        {
+          type: 'tool.use',
+          name: asString(obj.tool_name) ?? asString(obj.name) ?? 'tool',
+          input: asObject(obj.parameters) ?? asObject(obj.input) ?? {},
+        },
+      ];
     }
 
     if (type === 'tool_result') {
       const toolId = asString(obj.tool_id);
-      return [{ type: 'progress', source: 'cursor.tool_result', data: { status: asString(obj.status) ?? 'unknown', ...(toolId ? { tool_id: toolId } : {}) } }];
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.tool_result',
+          data: {
+            status: asString(obj.status) ?? 'unknown',
+            ...(toolId ? { tool_id: toolId } : {}),
+          },
+        },
+      ];
     }
 
     if (type === 'result' || type === 'turn.complete') {
@@ -106,6 +146,11 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (type === 'tool_call') return [];
-    return [{ type: 'error', message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+    return [
+      {
+        type: 'error',
+        message: `Cursor emitted unrecognized event type "${type}": ${JSON.stringify(obj)}`,
+      },
+    ];
   };
 }

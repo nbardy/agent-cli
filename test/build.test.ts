@@ -440,7 +440,7 @@ describe('oompa patterns', () => {
     // It must come BEFORE the -- separator (it's a flag, not a positional arg)
     const sepIdx = spec.argv.indexOf('--');
     const flagIdx = spec.argv.indexOf('--skip-git-repo-check');
-    assert.ok(flagIdx < sepIdx, `--skip-git-repo-check must be before -- separator`);
+    assert.ok(flagIdx < sepIdx, '--skip-git-repo-check must be before -- separator');
   });
 });
 

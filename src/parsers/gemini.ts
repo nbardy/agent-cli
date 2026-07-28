@@ -7,7 +7,9 @@ export function parseGemini(json: unknown): UnifiedAgentEvent[] {
   if (!obj) return [{ type: 'error', message: 'Gemini emitted non-object JSON' }];
   const type = asString(obj.type);
   if (!type) {
-    return [{ type: 'error', message: `Gemini JSON missing required "type": ${JSON.stringify(obj)}` }];
+    return [
+      { type: 'error', message: `Gemini JSON missing required "type": ${JSON.stringify(obj)}` },
+    ];
   }
 
   if (type === 'init') return [{ type: 'turn.started' }];
@@ -16,7 +18,13 @@ export function parseGemini(json: unknown): UnifiedAgentEvent[] {
     const content = asString(obj.content);
     return role === 'assistant' && content
       ? [{ type: 'text.delta', text: content }]
-      : [{ type: 'progress', source: 'gemini.message', data: { role: role ?? 'unknown', hasContent: !!content } }];
+      : [
+          {
+            type: 'progress',
+            source: 'gemini.message',
+            data: { role: role ?? 'unknown', hasContent: !!content },
+          },
+        ];
   }
   if (type === 'error') {
     const message = asString(obj.message) ?? asString(obj.error) ?? JSON.stringify(obj);
@@ -25,11 +33,23 @@ export function parseGemini(json: unknown): UnifiedAgentEvent[] {
       : [{ type: 'error', message }];
   }
   if (type === 'tool_use') {
-    return [{ type: 'tool.use', name: asString(obj.tool_name) ?? 'tool', input: asObject(obj.parameters) ?? {} }];
+    return [
+      {
+        type: 'tool.use',
+        name: asString(obj.tool_name) ?? 'tool',
+        input: asObject(obj.parameters) ?? {},
+      },
+    ];
   }
   if (type === 'tool_result') {
     const toolId = asString(obj.tool_id);
-    return [{ type: 'progress', source: 'gemini.tool_result', data: { status: asString(obj.status) ?? 'unknown', ...(toolId ? { tool_id: toolId } : {}) } }];
+    return [
+      {
+        type: 'progress',
+        source: 'gemini.tool_result',
+        data: { status: asString(obj.status) ?? 'unknown', ...(toolId ? { tool_id: toolId } : {}) },
+      },
+    ];
   }
   if (type === 'result') {
     return asString(obj.status) === 'success'
@@ -41,5 +61,10 @@ export function parseGemini(json: unknown): UnifiedAgentEvent[] {
         );
   }
 
-  return [{ type: 'error', message: `Gemini emitted unrecognized event type "${type}": ${JSON.stringify(obj)}` }];
+  return [
+    {
+      type: 'error',
+      message: `Gemini emitted unrecognized event type "${type}": ${JSON.stringify(obj)}`,
+    },
+  ];
 }

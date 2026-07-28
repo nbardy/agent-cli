@@ -1,5 +1,5 @@
-import type { HarnessConfig, BuildOptions, CommandSpec, HarnessName } from './types.ts';
 import { getHarness } from './harnesses/index.ts';
+import type { BuildOptions, CommandSpec, HarnessConfig, HarnessName } from './types.ts';
 
 /**
  * Build a CLI command from harness name + options.
@@ -13,7 +13,10 @@ import { getHarness } from './harnesses/index.ts';
  * - Process lifecycle (project-specific)
  * - Streaming/format flags (caller appends via extraArgs)
  */
-export function buildCommand(harness: HarnessName | string, options: BuildOptions = {}): CommandSpec {
+export function buildCommand(
+  harness: HarnessName | string,
+  options: BuildOptions = {}
+): CommandSpec {
   const config = getHarness(harness);
   return buildFromConfig(config, options);
 }
@@ -50,9 +53,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
   if (forking) {
     if (!config.sessionForkFlags) {
       throw new Error(
-        `Harness "${config.binary}" does not natively support fork. ` +
-        `Emulate via copy-and-resume (copy the on-disk session file to a ` +
-        `new id, then buildCommand with { resume: true, sessionId: <copy> }).`
+        `Harness "${config.binary}" does not natively support fork. Emulate via copy-and-resume (copy the on-disk session file to a new id, then buildCommand with { resume: true, sessionId: <copy> }).`
       );
     }
     argv.push(...config.sessionForkFlags(options.sessionId!));
@@ -81,7 +82,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
       const flags = config.decomposeModel(options.model);
       argv.push(...flags);
       // If decomposition produced -c flags, reasoning is already handled
-      modelHandledReasoning = flags.some(f => f.startsWith('model_reasoning_effort='));
+      modelHandledReasoning = flags.some((f) => f.startsWith('model_reasoning_effort='));
     } else {
       argv.push(config.modelFlag, options.model);
     }

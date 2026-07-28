@@ -1,10 +1,16 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { accessSync, constants } from 'node:fs';
-import { executeCommand, type ExecuteCommandCompletion, type UnifiedAgentEvent } from '../src/run.ts';
+import { constants, accessSync } from 'node:fs';
+import { describe, it } from 'node:test';
+import {
+  type ExecuteCommandCompletion,
+  type UnifiedAgentEvent,
+  executeCommand,
+} from '../src/run.ts';
 
 const liveGeminiEnabled = process.env.AGENT_CLI_LIVE_GEMINI === '1';
-const harness = (process.env.AGENT_CLI_LIVE_GEMINI_HARNESS ?? 'gemini') as 'gemini' | `gemini${number}`;
+const harness = (process.env.AGENT_CLI_LIVE_GEMINI_HARNESS ?? 'gemini') as
+  | 'gemini'
+  | `gemini${number}`;
 const model = process.env.AGENT_CLI_LIVE_GEMINI_MODEL ?? 'gemini-3.1-pro-preview';
 const cwd = process.cwd();
 const HIDE_TEST_PREFIX = '[_HIDE_TEST_]';
@@ -16,14 +22,14 @@ function requireBinary(name: string): void {
     try {
       accessSync(`${dir}/${name}`, constants.X_OK);
       return;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   throw new Error(`Binary not found on PATH: ${name}`);
 }
 
-async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<UnifiedAgentEvent[]> {
+async function collectEvents(
+  events: AsyncIterable<UnifiedAgentEvent>
+): Promise<UnifiedAgentEvent[]> {
   const out: UnifiedAgentEvent[] = [];
   for await (const event of events) out.push(event);
   return out;
@@ -31,20 +37,23 @@ async function collectEvents(events: AsyncIterable<UnifiedAgentEvent>): Promise<
 
 function errorMessages(events: UnifiedAgentEvent[]): string[] {
   return events
-    .filter((event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error')
+    .filter(
+      (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
+    )
     .map((event) => event.message);
 }
 
 function assertTurnSucceeded(
   label: string,
   completion: ExecuteCommandCompletion,
-  events: UnifiedAgentEvent[],
+  events: UnifiedAgentEvent[]
 ): void {
   const errors = errorMessages(events);
-  const authError = errors.find((message) =>
-    message.includes('AUTH_REQUIRED:') ||
-    message.includes('interactive authentication') ||
-    message.includes('Opening authentication page in your browser')
+  const authError = errors.find(
+    (message) =>
+      message.includes('AUTH_REQUIRED:') ||
+      message.includes('interactive authentication') ||
+      message.includes('Opening authentication page in your browser')
   );
 
   if (authError) {
@@ -58,7 +67,11 @@ function assertTurnSucceeded(
     'success',
     `${label}: expected success, got ${completion.reason}. Errors: ${JSON.stringify(errors)}`
   );
-  assert.deepStrictEqual(errors, [], `${label}: expected no error events, got ${JSON.stringify(errors)}`);
+  assert.deepStrictEqual(
+    errors,
+    [],
+    `${label}: expected no error events, got ${JSON.stringify(errors)}`
+  );
 }
 
 describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
@@ -82,10 +95,17 @@ describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
     assert.match(firstCompletion.sessionId, /^[0-9a-f-]{36}$/i);
 
     const firstText = firstEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> =>
+          event.type === 'text.delta'
+      )
       .map((event) => event.text)
       .join('');
-    assert.match(firstText, /\bFIRST_OK\b/, `expected live Gemini response to contain FIRST_OK, got: ${firstText}`);
+    assert.match(
+      firstText,
+      /\bFIRST_OK\b/,
+      `expected live Gemini response to contain FIRST_OK, got: ${firstText}`
+    );
 
     const resumedTurn = executeCommand({
       harness,
@@ -105,7 +125,10 @@ describe('live gemini smoke', { skip: !liveGeminiEnabled }, () => {
     assert.strictEqual(resumedCompletion.sessionId, firstCompletion.sessionId);
 
     const resumedText = resumedEvents
-      .filter((event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> => event.type === 'text.delta')
+      .filter(
+        (event): event is Extract<UnifiedAgentEvent, { type: 'text.delta' }> =>
+          event.type === 'text.delta'
+      )
       .map((event) => event.text)
       .join('');
     assert.match(

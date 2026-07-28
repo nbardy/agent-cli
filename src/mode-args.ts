@@ -23,8 +23,15 @@ export function buildModeExtraArgs(
 
   switch (harness) {
     case 'claude': {
-      const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages'];
-      if (yolo) args.push('--permission-mode', 'bypassPermissions', '--tools', 'default', '--add-dir', cwd);
+      const args = [
+        '-p',
+        '--verbose',
+        '--output-format',
+        'stream-json',
+        '--include-partial-messages',
+      ];
+      if (yolo)
+        args.push('--permission-mode', 'bypassPermissions', '--tools', 'default', '--add-dir', cwd);
       return args;
     }
     case 'codex':

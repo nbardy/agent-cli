@@ -2,9 +2,13 @@ import type { CompletionReason, UnifiedAgentEvent } from './runtime-types.ts';
 
 const OUT_OF_TOKENS_PATTERN =
   /out of tokens|token limit|usage limit|insufficient (?:credits|balance)|exceeded(?: your)?(?: current)? quota|credit balance|rate limit exceeded/i;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping intentionally matches ESC and CSI control bytes.
 const ANSI_RE = /[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
-export function classifyError(message: string): { kind: 'out_of_tokens' | 'error'; message: string } {
+export function classifyError(message: string): {
+  kind: 'out_of_tokens' | 'error';
+  message: string;
+} {
   const trimmed = message.trim();
   if (!trimmed) return { kind: 'error', message: 'Unknown error' };
   if (!OUT_OF_TOKENS_PATTERN.test(trimmed)) return { kind: 'error', message: trimmed };
@@ -16,8 +20,7 @@ export function classifyError(message: string): { kind: 'out_of_tokens' | 'error
 
 export function failureEvents(message: string, complete = true): UnifiedAgentEvent[] {
   const classified = classifyError(message);
-  const reason: CompletionReason =
-    classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error';
+  const reason: CompletionReason = classified.kind === 'out_of_tokens' ? 'out_of_tokens' : 'error';
   const first: UnifiedAgentEvent =
     classified.kind === 'out_of_tokens'
       ? { type: 'out_of_tokens', message: classified.message }

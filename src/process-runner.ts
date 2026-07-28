@@ -1,7 +1,7 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { buildCommand } from './build.ts';
-import type { CommandSpec } from './types.ts';
 import type { RunOptions, RunResult } from './runtime-types.ts';
+import type { CommandSpec } from './types.ts';
 
 export function runCommand(
   harness: string,

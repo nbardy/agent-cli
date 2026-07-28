@@ -58,7 +58,12 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
       for (const item of content) {
         const block = asObject(item);
         if (asString(block?.type) === 'tool_use' && asString(block?.name) === 'AskUserQuestion') {
-          return [{ type: 'text.delta', text: `\n<!--ask_user_question:${JSON.stringify(asObject(block?.input) ?? {})}-->\n` }];
+          return [
+            {
+              type: 'text.delta',
+              text: `\n<!--ask_user_question:${JSON.stringify(asObject(block?.input) ?? {})}-->\n`,
+            },
+          ];
         }
       }
       return [];

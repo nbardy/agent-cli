@@ -20,7 +20,8 @@ function extractAssistantText(obj: Record<string, unknown>): string | undefined 
 export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
   const obj = asObject(json);
   if (!obj) return [{ type: 'error', message: 'OpenCode emitted non-object JSON' }];
-  const eventType = normalizeType(asString(obj.type)) ?? normalizeType(asString(asObject(obj.part)?.type));
+  const eventType =
+    normalizeType(asString(obj.type)) ?? normalizeType(asString(asObject(obj.part)?.type));
 
   switch (eventType) {
     case 'step_start':
@@ -32,18 +33,23 @@ export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
     case 'tool_use':
     case 'tool': {
       const part = asObject(obj.part) ?? {};
-      return [{
-        type: 'tool.use',
-        name: asString(part.tool) ?? asString(obj.tool) ?? 'tool',
-        input: asObject(asObject(part.state)?.input) ?? {},
-      }];
+      return [
+        {
+          type: 'tool.use',
+          name: asString(part.tool) ?? asString(obj.tool) ?? 'tool',
+          input: asObject(asObject(part.state)?.input) ?? {},
+        },
+      ];
     }
     case 'step_finish': {
       const part = asObject(obj.part);
       const reasonRaw = asString(part?.reason) ?? asString(obj.reason);
       const reason = normalizeType(reasonRaw);
       if (reason === 'tool_calls') return [];
-      if (reason && ['failed', 'error', 'abort', 'aborted', 'cancel', 'cancelled', 'canceled'].includes(reason)) {
+      if (
+        reason &&
+        ['failed', 'error', 'abort', 'aborted', 'cancel', 'cancelled', 'canceled'].includes(reason)
+      ) {
         return failureEvents(`OpenCode step failed (${reasonRaw ?? 'unknown'})`);
       }
       return [{ type: 'turn.complete', reason: 'success' }];

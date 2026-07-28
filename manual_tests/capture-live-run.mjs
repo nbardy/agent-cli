@@ -180,7 +180,13 @@ function sharedCommandFor({ harness, cwd, model, prompt, debugRawEvents }) {
 
   return {
     command: process.execPath,
-    args: ['--experimental-strip-types', path.join(packageRoot, 'src', 'cli.ts'), 'run', '--input', '-'],
+    args: [
+      '--experimental-strip-types',
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'run',
+      '--input',
+      '-',
+    ],
     stdinPayload: JSON.stringify(request),
     metadata: request,
   };
@@ -225,9 +231,7 @@ function countJsonEventTypes(text) {
       if (parsed && typeof parsed.type === 'string') {
         counts[parsed.type] = (counts[parsed.type] ?? 0) + 1;
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return counts;
 }
@@ -255,10 +259,9 @@ async function main() {
   const timeoutMs = Number(args['timeout-ms'] ?? 240000);
   const debugRawEvents = !args['no-debug-events'];
 
-  const runDir =
-    args['out-dir']
-      ? path.resolve(args['out-dir'])
-      : path.join(runsRoot, `${formatTimestamp()}-${runner}-${harness}-${scenario}`);
+  const runDir = args['out-dir']
+    ? path.resolve(args['out-dir'])
+    : path.join(runsRoot, `${formatTimestamp()}-${runner}-${harness}-${scenario}`);
   const outputDir = path.join(runDir, 'artifacts', randomUUID());
 
   fs.mkdirSync(outputDir, { recursive: true });

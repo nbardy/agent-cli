@@ -330,18 +330,17 @@ describe('gemini', () => {
 describe('cursor', () => {
   it('builds basic command with stream-json printing flags and positional prompt', () => {
     const spec = buildCommand('cursor', {
-      model: 'composer-2',
+      model: 'composer-2.5',
       prompt: 'hello',
     });
     assert.deepStrictEqual(spec.argv, [
-      'cursor',
-      'agent',
+      'cursor-agent',
       '--print',
       '--output-format',
       'stream-json',
       '--stream-partial-output',
       '--model',
-      'composer-2',
+      'composer-2.5',
       'hello',
     ]);
     assert.strictEqual(spec.stdin, 'close');
@@ -349,7 +348,7 @@ describe('cursor', () => {
 
   it('resume uses --resume with the provided sessionId', () => {
     const spec = buildCommand('cursor', {
-      model: 'composer-2',
+      model: 'composer-2.5',
       prompt: 'continue',
       sessionId: 'cursor-session',
       resume: true,
@@ -680,8 +679,18 @@ describe('model loop', () => {
       'openai/gpt-5', // legacy format
     ],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-    cursor: ['composer-2'],
+    cursor: [
+      'composer-2.5',
+      'cursor-grok-4.5-high',
+      'cursor-grok-4.5-medium',
+      'cursor-grok-4.5-low',
+    ],
   };
+
+  function expectedBinary(harness: string): string {
+    if (harness === 'cursor') return 'cursor-agent';
+    return harness;
+  }
 
   for (const [harness, models] of Object.entries(ALL_MODELS)) {
     for (const model of models) {
@@ -693,7 +702,7 @@ describe('model loop', () => {
           bypassPermissions: true,
         });
         // Basic sanity: argv starts with the binary
-        assert.strictEqual(spec.argv[0], harness === 'codex' ? 'codex' : harness);
+        assert.strictEqual(spec.argv[0], expectedBinary(harness));
         // Model appears in argv (either directly, decomposed, or normalized).
         // OpenCode normalizes openai/X → opencode/X, so check both forms.
         const normalized = model.replace(/^openai\//, 'opencode/');
@@ -716,7 +725,7 @@ describe('model loop', () => {
           sessionId: 'test-session',
           resume: true,
         });
-        assert.strictEqual(spec.argv[0], harness === 'codex' ? 'codex' : harness);
+        assert.strictEqual(spec.argv[0], expectedBinary(harness));
         // No session-create flags in resume
         assert.ok(
           !spec.argv.includes('--session-id'),

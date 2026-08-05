@@ -22,6 +22,38 @@ if (prompt === 'contract-success') {
   process.exit(0);
 }
 
+if (prompt === 'contract-detached-multi-event') {
+  emit({ type: 'thread.started', thread_id: 'thread-detached-multi-event' });
+  emit({ type: 'turn.started' });
+  setTimeout(() => {
+    emit({
+      type: 'item.started',
+      item: {
+        id: 'item-delayed-command',
+        type: 'command_execution',
+        command: '/bin/pwd',
+        status: 'in_progress',
+      },
+    });
+  }, 25);
+  setTimeout(() => {
+    emit({
+      type: 'item.completed',
+      item: {
+        id: 'item-delayed-command',
+        type: 'command_execution',
+        command: '/bin/pwd',
+        aggregated_output: '/tmp/workspace\\n',
+        exit_code: 0,
+        status: 'completed',
+      },
+    });
+    emit({ type: 'item.completed', item: { type: 'agent_message', text: 'delayed hello' } });
+    emit({ type: 'turn.completed' });
+    process.exit(0);
+  }, 75);
+}
+
 if (prompt === 'contract-no-complete') {
   emit({ type: 'thread.started', thread_id: 'thread-no-complete' });
   process.exit(7);
@@ -164,7 +196,7 @@ if (prompt === 'contract-subagent-lifecycle') {
   process.exit(0);
 }
 
-process.exit(0);
+if (prompt !== 'contract-detached-multi-event') process.exit(0);
 `;
 
   writeFileSync(shimPath, shimSource);
@@ -235,7 +267,7 @@ process.exit(0);
 }
 
 function writeCursorShim(binDir: string): void {
-  const shimPath = path.join(binDir, 'cursor');
+  const shimPath = path.join(binDir, 'cursor-agent');
   const shimSource = `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const prompt = args[args.length - 1] ?? '';
@@ -253,11 +285,11 @@ if (prompt === 'cursor-auth-required') {
 }
 
 if (prompt === 'cursor-success') {
-  if (model !== 'composer-2') {
+  if (model !== 'composer-2.5') {
     process.stderr.write('unexpected model: ' + model + '\\n');
     process.exit(2);
   }
-  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2', permissionMode: 'default' });
+  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2.5', permissionMode: 'default' });
   emit({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'cursor-success' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
@@ -272,7 +304,7 @@ if (prompt === 'cursor-resume-success') {
     process.stderr.write('resume mismatch: ' + resumeSession + '\\n');
     process.exit(3);
   }
-  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2', permissionMode: 'default' });
+  emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2.5', permissionMode: 'default' });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi again from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 2 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi again from cursor' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'result', subtype: 'success', is_error: false, result: 'hi again from cursor', session_id: 'cursor-session-1' });
@@ -357,6 +389,43 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(turnStartedCount, 1);
     assert.deepStrictEqual(completionReasons, ['success']);
     assert.ok(sawHelloDelta, 'expected assistant text delta from codex JSON stream');
+  });
+
+  it('keeps a detached process group observable across delayed stdout events', async () => {
+    const turn = executeCommand({
+      harness: 'codex',
+      mode: 'conversation',
+      prompt: 'contract-detached-multi-event',
+      cwd: workspace,
+      model: 'gpt-5.3-codex',
+      yolo: false,
+      detached: true,
+    });
+
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'success');
+    assert.strictEqual(completion.exitCode, 0);
+    assert.strictEqual(completion.sessionId, 'thread-detached-multi-event');
+    assert.ok(
+      events.some((event) => event.type === 'tool.use'),
+      'expected delayed command event from detached process group'
+    );
+    assert.ok(
+      events.some((event) => event.type === 'text.delta' && event.text === 'delayed hello'),
+      'expected delayed assistant text from detached process group'
+    );
+    assert.deepStrictEqual(
+      events
+        .filter(
+          (event): event is Extract<UnifiedAgentEvent, { type: 'turn.complete' }> =>
+            event.type === 'turn.complete'
+        )
+        .map((event) => event.reason),
+      ['success']
+    );
   });
 
   it('falls back to error completion when process exits non-zero without terminal event', async () => {
@@ -618,7 +687,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       mode: 'conversation',
       prompt: 'cursor-auth-required',
       cwd: workspace,
-      model: 'composer-2',
+      model: 'composer-2.5',
       yolo: false,
     });
 
@@ -646,7 +715,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       mode: 'conversation',
       prompt: 'cursor-success',
       cwd: workspace,
-      model: 'composer-2',
+      model: 'composer-2.5',
       yolo: true,
     });
 
@@ -687,7 +756,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       mode: 'conversation',
       prompt: 'cursor-success',
       cwd: workspace,
-      model: 'composer-2',
+      model: 'composer-2.5',
       yolo: true,
     });
 
@@ -700,7 +769,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       mode: 'conversation',
       prompt: 'cursor-resume-success',
       cwd: workspace,
-      model: 'composer-2',
+      model: 'composer-2.5',
       resumeSessionId: firstCompletion.sessionId,
       yolo: true,
     });
@@ -709,7 +778,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const resumedCompletion = await resumedTurn.completed;
     const resumedEvents = await eventsPromise;
 
-    assert.strictEqual(resumedTurn.spec.argv[0], 'cursor');
+    assert.strictEqual(resumedTurn.spec.argv[0], 'cursor-agent');
     assert.ok(resumedTurn.spec.argv.includes('--resume'));
     assert.ok(resumedTurn.spec.argv.includes('cursor-session-1'));
     assert.strictEqual(resumedCompletion.reason, 'success');

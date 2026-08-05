@@ -110,7 +110,11 @@ export interface HarnessConfig {
   readonly sessionResumeFlags?: (sessionId: string) => readonly string[];
 
   /**
-   * Fork strategy — two mutually-exclusive shapes, one per harness:
+   * Provider-SESSION fork strategy for merge reviews — NOT Unleashd's Chat
+   * "Fork" button. Chat Fork is a soft handoff (new conversation + draft /
+   * pasted transcript) and never sets these fields.
+   *
+   * Two mutually-exclusive shapes, one per harness:
    *
    *   NATIVE:   sessionForkFlags is set → CLI has a real fork flag
    *             (claude `--resume <id> --fork-session`, opencode
@@ -121,8 +125,9 @@ export interface HarnessConfig {
    *             source session file to a new uuid on disk and then --resume
    *             the copy. Source stays byte-identical. See fork-emulation.ts.
    *
-   *   NEITHER:  harness does not support fork at all — executeCommand
-   *             throws if a caller passes forkSessionId.
+   *   NEITHER:  harness does not support merge session-fork — executeCommand
+   *             throws if a caller passes forkSessionId. Chat soft Fork is
+   *             still fine without these.
    *
    * The two are mutually exclusive by construction: a harness either has
    * a native fork flag OR needs emulation, never both.

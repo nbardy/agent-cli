@@ -9,12 +9,14 @@ import {
 import { canonicalizeHarness } from './harnesses/index.ts';
 import { createHeartbeat } from './heartbeat.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
+import { createCodexNativeProgressProbe } from './native-progress.ts';
 import { type HarnessParser, createParser } from './parsers/index.ts';
 import { runCommand } from './process-runner.ts';
 import type {
   CompletionReason,
   ExecuteCommandHandle,
   ExecuteCommandRequest,
+  StdoutStreamState,
   UnifiedAgentEvent,
 } from './runtime-types.ts';
 import { captureSessionIdFromJson, prepareSession } from './session.ts';
@@ -163,13 +165,21 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   let completeEventSeen = false;
   let turnStartedSeen = false;
   let stopRequested = false;
+  let stdoutStreamState: StdoutStreamState | null = null;
+  let nativeProgressProbe =
+    canonicalHarness === 'codex' && resolvedSessionId
+      ? createCodexNativeProgressProbe(resolvedSessionId)
+      : null;
 
   let resolveSessionId!: (value: string) => void;
   const sessionId = new Promise<string>((resolve) => {
     resolveSessionId = resolve;
   });
 
-  const heartbeat = createHeartbeat(request.mode === 'conversation', (event) => emit(event));
+  const heartbeat = createHeartbeat(request.mode === 'conversation', (event) => emit(event), {
+    nativeProgress: () => nativeProgressProbe?.poll() ?? null,
+    stdoutState: () => stdoutStreamState,
+  });
 
   const emit = (event: UnifiedAgentEvent): void => {
     if (event.type === 'turn.started') {
@@ -187,6 +197,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     if (event.type === 'text.delta' || event.type === 'tool.use') {
       heartbeat.markMeaningful();
     }
+    if (!(event.type === 'progress' && event.source === 'agent-cli.heartbeat')) {
+      heartbeat.markUnifiedEvent();
+    }
     queue.push(event);
   };
 
@@ -194,6 +207,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     const captured = captureSessionIdFromJson(canonicalHarness, json);
     if (captured && captured !== resolvedSessionId) {
       resolvedSessionId = captured;
+      if (canonicalHarness === 'codex') {
+        nativeProgressProbe = createCodexNativeProgressProbe(captured);
+      }
       emit({ type: 'session.started', sessionId: captured });
     }
   };
@@ -225,15 +241,17 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     detached: request.detached === true,
     onStdout: (chunk) => stdout.onChunk(chunk),
     onStderr: (chunk) => stderr.onChunk(chunk),
+    onStdoutState: (state) => {
+      stdoutStreamState = state;
+    },
   });
 
   heartbeat.start();
-  if (request.detached === true) child.unref();
   if (resolvedSessionId) emit({ type: 'session.started', sessionId: resolvedSessionId });
   emit({ type: 'turn.started' });
 
   const completed = done
-    .then(({ exitCode, spec: doneSpec }) => {
+    .then(({ exitCode, signal, spec: doneSpec }) => {
       heartbeat.stop();
       stdout.flush();
       stderr.flush();
@@ -263,7 +281,13 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
       queue.close();
       resolveSessionId(resolvedSessionId);
-      return { reason: finalReason, exitCode, sessionId: resolvedSessionId, spec: doneSpec };
+      return {
+        reason: finalReason,
+        exitCode,
+        signal,
+        sessionId: resolvedSessionId,
+        spec: doneSpec,
+      };
     })
     .catch((err) => {
       heartbeat.stop();

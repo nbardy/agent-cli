@@ -4,13 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Fork emulation for providers whose CLI has no native non-interactive
- * `--fork` flag. The technique: locate the source session file on disk,
- * COPY it to a fresh uuid, rewrite the internal session-id field so the
- * copy is self-consistent, and return the new id. The caller then spawns
- * the provider with `resume: true` on the copy.
+ * Provider-SESSION fork emulation for merge reviews (NOT Chat "Fork").
  *
- * The source file is never touched — this is a true fork, not a rename.
+ * For providers whose CLI has no native non-interactive `--fork` flag.
+ * Technique: locate the source session file on disk, COPY it to a fresh
+ * uuid, rewrite the internal session-id field so the copy is self-consistent,
+ * and return the new id. The caller then spawns with `resume: true` on the copy.
+ *
+ * The source file is never touched — this is a true session fork, not a rename.
+ *
+ * Unleashd's Chat "Fork" button does not use this. That path is a soft handoff
+ * (new conversation + draft/transcript text) via resumedFromConversationId.
  *
  * Synchronous on purpose: executeCommand is a synchronous factory
  * (returns a handle immediately, spawn happens eagerly). Session files
@@ -112,9 +116,12 @@ export function emulateForkGemini(sourceSessionId: string): EmulatedForkResult {
 
 // --- internal: filesystem search --------------------------------------------
 
-function findCodexSessionFile(sessionId: string): string | null {
+export function findCodexSessionFile(
+  sessionId: string,
+  sessionsRoot = codexSessionsDir()
+): string | null {
   try {
-    const years = listDirs(codexSessionsDir());
+    const years = listDirs(sessionsRoot);
     for (const y of years) {
       const months = listDirs(y);
       for (const m of months) {

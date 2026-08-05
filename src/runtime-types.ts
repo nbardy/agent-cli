@@ -4,11 +4,20 @@ import type { BuildOptions, CommandSpec, GeminiAlias, Harness, HarnessName } fro
 export interface RunOptions extends BuildOptions {
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
+  onStdoutState?: (state: StdoutStreamState) => void;
+  /** Start a separate process group for group-scoped termination. The owner keeps the child referenced. */
   detached?: boolean;
+}
+
+export interface StdoutStreamState {
+  event: 'attached' | 'resume' | 'pause' | 'close';
+  readableFlowing: boolean | null;
+  readableLength: number;
 }
 
 export interface RunResult {
   exitCode: number | null;
+  signal: NodeJS.Signals | null;
   spec: CommandSpec;
 }
 
@@ -49,6 +58,7 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   forkSessionId?: string;
   yolo?: boolean;
   debugRawEvents?: boolean;
+  /** Start a separate process group for group-scoped termination. The owner keeps the child referenced. */
   detached?: boolean;
 };
 
@@ -91,6 +101,7 @@ export type UnifiedAgentEvent =
 export interface ExecuteCommandCompletion {
   reason: CompletionReason;
   exitCode: number | null;
+  signal: NodeJS.Signals | null;
   sessionId: string;
   spec: CommandSpec;
 }

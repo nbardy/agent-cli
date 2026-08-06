@@ -253,6 +253,33 @@ describe('opencode', () => {
     const mIdx = spec.argv.indexOf('-m');
     assert.strictEqual(spec.argv[mIdx + 1], 'opencode/big-pickle');
   });
+
+  it('qualifies bare muse-spark IDs with meta/ prefix', () => {
+    const spec = buildCommand('opencode', {
+      model: 'muse-spark-1.2-contributor',
+      prompt: 'test',
+    });
+    const mIdx = spec.argv.indexOf('-m');
+    assert.strictEqual(spec.argv[mIdx + 1], 'meta/muse-spark-1.2-contributor');
+  });
+
+  it('passes qualified meta/muse-spark IDs through unchanged', () => {
+    const spec = buildCommand('opencode', {
+      model: 'meta/muse-spark-1.2-contributor',
+      prompt: 'test',
+    });
+    const mIdx = spec.argv.indexOf('-m');
+    assert.strictEqual(spec.argv[mIdx + 1], 'meta/muse-spark-1.2-contributor');
+  });
+
+  it('qualifies bare muse-spark-1.1 with meta/ prefix', () => {
+    const spec = buildCommand('opencode', {
+      model: 'muse-spark-1.1',
+      prompt: 'test',
+    });
+    const mIdx = spec.argv.indexOf('-m');
+    assert.strictEqual(spec.argv[mIdx + 1], 'meta/muse-spark-1.1');
+  });
 });
 
 // =============================================================================
@@ -364,6 +391,79 @@ describe('cursor', () => {
       bypassPermissions: true,
     });
     assert.ok(spec.argv.includes('-f'));
+  });
+});
+
+// =============================================================================
+// Muse
+// =============================================================================
+
+describe('muse', () => {
+  it('builds basic command with exec, --model and positional prompt', () => {
+    const spec = buildCommand('muse', {
+      model: 'muse-spark-1.2-contributor',
+      prompt: 'hello',
+    });
+    assert.deepStrictEqual(spec.argv, ['muse', 'exec', '--model', 'muse-spark-1.2-contributor', 'hello']);
+    assert.strictEqual(spec.stdin, 'close');
+  });
+
+  it('creates session with --session-id on first turn', () => {
+    const spec = buildCommand('muse', {
+      model: 'muse-spark-1.1',
+      prompt: 'hello',
+      sessionId: '11111111-1111-1111-1111-111111111111',
+    });
+    assert.ok(spec.argv.includes('--session-id'));
+    assert.ok(spec.argv.includes('11111111-1111-1111-1111-111111111111'));
+  });
+
+  it('resumes with --session-id on second turn', () => {
+    const spec = buildCommand('muse', {
+      model: 'muse-spark-1.2-contributor',
+      prompt: 'continue',
+      sessionId: '11111111-1111-1111-1111-111111111111',
+      resume: true,
+    });
+    assert.ok(spec.argv.includes('--session-id'));
+    const count = spec.argv.filter((a) => a === '--session-id').length;
+    assert.strictEqual(count, 1);
+  });
+
+  it('includes --reasoning-effort when reasoning requested', () => {
+    const spec = buildCommand('muse', {
+      model: 'muse-spark-1.2-contributor',
+      prompt: 'test',
+      reasoning: 'high',
+    });
+    assert.ok(spec.argv.includes('--reasoning-effort'));
+    assert.ok(spec.argv.includes('high'));
+  });
+
+  it('includes --yolo when bypass requested', () => {
+    const spec = buildCommand('muse', {
+      prompt: 'test',
+      bypassPermissions: true,
+    });
+    assert.ok(spec.argv.includes('--yolo'));
+  });
+
+  it('uses --workspace for cwd on first turn, suppresses on resume', () => {
+    const first = buildCommand('muse', {
+      model: 'muse-spark-1.1',
+      prompt: 'hello',
+      cwd: '/tmp/work',
+    });
+    assert.ok(first.argv.includes('--workspace'));
+    assert.ok(first.argv.includes('/tmp/work'));
+    const resume = buildCommand('muse', {
+      model: 'muse-spark-1.1',
+      prompt: 'continue',
+      sessionId: '11111111-1111-1111-1111-111111111111',
+      resume: true,
+      cwd: '/tmp/work',
+    });
+    assert.ok(!resume.argv.includes('--workspace'));
   });
 });
 
@@ -565,9 +665,9 @@ describe('cross-cutting', () => {
     assert.throws(() => buildCommand('unknown-harness', {}), /Unknown harness/);
   });
 
-  it('listHarnesses returns all five', () => {
+  it('listHarnesses returns all six', () => {
     const harnesses = listHarnesses();
-    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'cursor', 'gemini', 'opencode']);
+    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'cursor', 'gemini', 'muse', 'opencode']);
   });
 });
 
@@ -677,6 +777,9 @@ describe('model loop', () => {
       'opencode/kimi-k2.5-free',
       'opencode/minimax-m2.5-free',
       'openai/gpt-5', // legacy format
+      'meta/muse-spark-1.1',
+      'meta/muse-spark-1.2-contributor',
+      'muse-spark-1.2-contributor', // bare form → meta/ qualified
     ],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
     cursor: [
@@ -685,6 +788,7 @@ describe('model loop', () => {
       'cursor-grok-4.5-medium',
       'cursor-grok-4.5-low',
     ],
+    muse: ['muse-spark-1.1', 'muse-spark-1.2-contributor'],
   };
 
   function expectedBinary(harness: string): string {
@@ -726,11 +830,19 @@ describe('model loop', () => {
           resume: true,
         });
         assert.strictEqual(spec.argv[0], expectedBinary(harness));
-        // No session-create flags in resume
-        assert.ok(
-          !spec.argv.includes('--session-id'),
-          `--session-id should not appear in resume for ${harness}/${model}`
-        );
+        // Muse uses --session-id for both create and resume (unlike Claude's --resume)
+        if (harness === 'muse') {
+          assert.ok(
+            spec.argv.includes('--session-id'),
+            `muse should have --session-id on resume for ${model}`
+          );
+        } else {
+          // No session-create flags in resume (Claude's --session-id must not appear with --resume)
+          assert.ok(
+            !spec.argv.includes('--session-id'),
+            `--session-id should not appear in resume for ${harness}/${model}`
+          );
+        }
       });
     }
   }

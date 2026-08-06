@@ -227,7 +227,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto),
       ...(request.extraArgs ?? []),
     ],
-    ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude')
+    ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude' || canonicalHarness === 'muse')
       ? { reasoning: reasoningEffort }
       : {}),
   };

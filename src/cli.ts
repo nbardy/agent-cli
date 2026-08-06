@@ -7,6 +7,7 @@ import { resolveBinary } from './resolve.ts';
 import {
   type ClaudeReasoningLevel,
   type CodexReasoningLevel,
+  type MuseReasoningLevel,
   type ExecuteCommandRequest,
   executeCommand,
 } from './run.ts';
@@ -22,7 +23,7 @@ Usage:
   agent-cli info <harness>                      Show harness details
 
 Options:
-  --harness <name>         Agent CLI to invoke (claude, codex, opencode, gemini, cursor, gemini1, gemini2, gemini3)
+  --harness <name>         Agent CLI to invoke (claude, codex, opencode, gemini, cursor, muse, gemini1, gemini2, gemini3)
   --model <id>             Model identifier (harness-specific)
   --prompt <text>          Prompt text
   --session <id>           Session ID (for create or resume)
@@ -30,7 +31,7 @@ Options:
   --cwd <path>             Working directory for the agent process
   --bypass-permissions     Include permissions bypass flags
   --debug-events           Mirror raw provider stdout/stderr to stderr during run
-  --reasoning <level>      Reasoning effort level. codex: minimal|low|medium|high|xhigh|max. claude: low|medium|high|xhigh|max.
+  --reasoning <level>      Reasoning effort level. codex: minimal|low|medium|high|xhigh|max|ultra. claude: low|medium|high|xhigh|max. muse: none|minimal|low|medium|high|xhigh|ultra.
   --resolve                Resolve binary in argv[0] to absolute path (build only)
   --input <json|->         JSON input (inline or stdin). Shape: { harness, model?, prompt?, ... }
   --extra <args...>        Extra args appended after all generated args (must be last)`;
@@ -176,6 +177,13 @@ function parseRunRequest(rest: string[]): ExecuteCommandRequest {
       ...base,
       harness: 'claude',
       ...(opts.reasoning ? { reasoningEffort: opts.reasoning as ClaudeReasoningLevel } : {}),
+    };
+  }
+  if (canonical === 'muse') {
+    return {
+      ...base,
+      harness: 'muse',
+      ...(opts.reasoning ? { reasoningEffort: opts.reasoning as MuseReasoningLevel } : {}),
     };
   }
 

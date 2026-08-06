@@ -3,6 +3,7 @@ import { claudeConfig } from './claude.ts';
 import { codexConfig } from './codex.ts';
 import { cursorConfig } from './cursor.ts';
 import { geminiConfig } from './gemini.ts';
+import { museConfig } from './muse.ts';
 import { opencodeConfig } from './opencode.ts';
 
 const geminiAliasPattern = /^gemini\d+$/;
@@ -14,6 +15,7 @@ export const registry: Record<Harness, HarnessConfig> = {
   opencode: opencodeConfig,
   gemini: geminiConfig,
   cursor: cursorConfig,
+  muse: museConfig,
 };
 
 export function isGeminiAlias(name: string): name is Extract<HarnessName, `gemini${number}`> {

@@ -32,6 +32,8 @@ export const CODEX_REASONING_LEVELS = [
   'ultra',
 ] as const;
 export type CodexReasoningLevel = (typeof CODEX_REASONING_LEVELS)[number];
+export const MUSE_REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'ultra'] as const;
+export type MuseReasoningLevel = (typeof MUSE_REASONING_LEVELS)[number];
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
 export type UnifiedSubagentStatus = 'pending' | 'running' | 'completed' | 'error';
@@ -72,7 +74,12 @@ type ClaudeExecuteCommandRequest = BaseExecuteCommandRequest<'claude'> & {
   fullAuto?: never;
 };
 
-type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude'>> =
+type MuseExecuteCommandRequest = BaseExecuteCommandRequest<'muse'> & {
+  reasoningEffort?: string;
+  fullAuto?: never;
+};
+
+type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude' | 'muse'>> =
   BaseExecuteCommandRequest<THarness> & {
     reasoningEffort?: never;
     fullAuto?: never;
@@ -81,6 +88,7 @@ type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' 
 export type ExecuteCommandRequest =
   | CodexExecuteCommandRequest
   | ClaudeExecuteCommandRequest
+  | MuseExecuteCommandRequest
   | NoExtraExecuteCommandRequest<'opencode'>
   | NoExtraExecuteCommandRequest<'gemini'>
   | NoExtraExecuteCommandRequest<'cursor'>

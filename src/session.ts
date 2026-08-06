@@ -63,5 +63,12 @@ export function captureSessionIdFromJson(harness: Harness, json: unknown): strin
   if (harness === 'claude' || harness === 'gemini' || harness === 'cursor') {
     return asString(obj.session_id) ?? asString(obj.sessionId);
   }
+  if (harness === 'muse') {
+    const stream = asObject(obj.stream);
+    if (asString(stream?.kind) === 'session' && asString(stream?.id)) {
+      return asString(stream!.id);
+    }
+    return asString(obj.session_id) ?? asString(obj.sessionId);
+  }
   return undefined;
 }

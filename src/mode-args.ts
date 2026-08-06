@@ -42,5 +42,7 @@ export function buildModeExtraArgs(
       return ['--format', 'json'];
     case 'cursor':
       return [];
+    case 'muse':
+      return ['--json'];
   }
 }

@@ -16,16 +16,27 @@ const cache = new Map<string, string>();
  * command names on macOS. Resolving once via `which` and using
  * the absolute path avoids this issue.
  */
+const CURSOR_FALLBACKS: Record<string, string[]> = {
+  agent: ['cursor-agent'],
+  'cursor-agent': ['agent'],
+};
+
 export function resolveBinary(name: string): string {
   const cached = cache.get(name);
   if (cached) return cached;
 
-  try {
-    const path = execSync(`which ${name}`, { encoding: 'utf-8' }).trim();
-    if (!path) throw new Error(`Empty result from which ${name}`);
-    cache.set(name, path);
-    return path;
-  } catch {
-    throw new Error(`Binary not found on PATH: ${name}`);
+  const candidates = [name, ...(CURSOR_FALLBACKS[name] ?? [])];
+  for (const candidate of candidates) {
+    try {
+      const p = execSync(`which ${candidate}`, { encoding: 'utf-8' }).trim();
+      if (!p) continue;
+      // Cache under requested name so future lookups don't re-probe fallback.
+      cache.set(name, p);
+      if (candidate !== name) cache.set(candidate, p);
+      return p;
+    } catch {
+      // try fallback
+    }
   }
+  throw new Error(`Binary not found on PATH: ${name}`);
 }

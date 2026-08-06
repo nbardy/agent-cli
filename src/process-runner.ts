@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { buildCommand } from './build.ts';
+import { resolveBinary } from './resolve.ts';
 import type { RunOptions, RunResult } from './runtime-types.ts';
 import type { CommandSpec } from './types.ts';
 
@@ -33,8 +34,18 @@ export function runCommand(
 ): { child: ChildProcess; spec: CommandSpec; done: Promise<RunResult> } {
   const spec = buildCommand(harness, options);
   const [bin, ...args] = spec.argv;
+  // Cursor binary fallback: harness now builds `agent` but older installs
+  // only have `cursor-agent`. Resolve through resolveBinary which probes
+  // `agent` → `cursor-agent` fallback; on spawn we use the resolved path
+  // so ENOENT never surfaces, but spec.argv stays canonical (`agent`).
+  let effectiveBin = bin;
+  try {
+    effectiveBin = resolveBinary(bin);
+  } catch {
+    // let spawn handle ENOENT with its own error path
+  }
   const useCallbacks = !!options.onStdout || !!options.onStderr;
-  const child = spawn(bin, args, {
+  const child = spawn(effectiveBin, args, {
     cwd: options.cwd,
     detached: options.detached === true,
     stdio: ['pipe', useCallbacks ? 'pipe' : 'inherit', useCallbacks ? 'pipe' : 'inherit'],

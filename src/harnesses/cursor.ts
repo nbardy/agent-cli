@@ -3,18 +3,25 @@ import type { HarnessConfig } from '../types.ts';
 /**
  * Cursor Agent CLI harness.
  *
- * Prefer the dedicated `cursor-agent` binary over `cursor agent …` (Electron
- * app wrapper). Flags are the same; argv starts at the agent options.
+ * Binary migrated from `cursor-agent` to `agent` (symlink
+ * vendor 2026.08.04-aaa8809/cursor-agent → agent on PATH). New CLI help
+ * (`agent --help`) lists `agent` as the headless entrypoint; flags are
+ * identical: --print --output-format stream-json --stream-partial-output,
+ * --model, --resume <id>, -f/--force/--yolo, --trust, --sandbox, --add-dir,
+ * --worktree etc. No `agent exec` subcommand — headless is `agent` itself
+ * with options (unlike `codex exec`). Resume uses `--resume <chatId>` (also
+ * supports bare `--continue` for "latest", but harness always passes explicit
+ * id via --resume). --force (-f) / --yolo are equivalent bypass; harness
+ * prefers long-form --force. --trust/--sandbox/--add-dir/--worktree are
+ * workspace-policy flags passed via extraArgs when needed, not baseCmd.
+ * Fallback to `cursor-agent` is handled in resolveBinary/process-runner.
  *
- * Resume uses `--resume <chatId>`. No sessionForkFlags / emulateFork: Cursor
- * is absent from FORK_CAPABLE_PROVIDERS (merge provider-session forks only).
- * Chat "Fork" soft handoff still works for Cursor — that path never needs
- * CLI session inheritance.
+ * No sessionForkFlags / emulateFork: Cursor absent from FORK_CAPABLE_PROVIDERS.
  */
 export const cursorConfig: HarnessConfig = {
-  binary: 'cursor-agent',
+  binary: 'agent',
   baseCmd: ['--print', '--output-format', 'stream-json', '--stream-partial-output'],
-  bypassFlags: ['-f'],
+  bypassFlags: ['--force'],
   modelFlag: '--model',
   promptVia: 'cli-arg',
   stdin: 'close',

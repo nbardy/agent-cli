@@ -267,7 +267,9 @@ process.exit(0);
 }
 
 function writeCursorShim(binDir: string): void {
-  const shimPath = path.join(binDir, 'cursor-agent');
+  // Provide both `agent` (new) and `cursor-agent` (legacy fallback) shims
+  // so resolveBinary fallback `agent` → `cursor-agent` and process-runner
+  // effectiveBin logic can be exercised. Both shims share identical source.
   const shimSource = `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const prompt = args[args.length - 1] ?? '';
@@ -314,8 +316,11 @@ if (prompt === 'cursor-resume-success') {
 process.exit(0);
 `;
 
-  writeFileSync(shimPath, shimSource);
-  chmodSync(shimPath, 0o755);
+  for (const name of ['agent', 'cursor-agent']) {
+    const shimPath = path.join(binDir, name);
+    writeFileSync(shimPath, shimSource);
+    chmodSync(shimPath, 0o755);
+  }
 }
 
 async function collectEvents(
@@ -723,7 +728,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const completion = await turn.completed;
     const events = await eventsPromise;
 
-    assert.ok(turn.spec.argv.includes('-f'));
+    assert.ok(turn.spec.argv.includes('--force'));
     assert.strictEqual(completion.reason, 'success');
     assert.strictEqual(completion.sessionId, 'cursor-session-1');
 
@@ -778,7 +783,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const resumedCompletion = await resumedTurn.completed;
     const resumedEvents = await eventsPromise;
 
-    assert.strictEqual(resumedTurn.spec.argv[0], 'cursor-agent');
+    assert.strictEqual(resumedTurn.spec.argv[0], 'agent');
     assert.ok(resumedTurn.spec.argv.includes('--resume'));
     assert.ok(resumedTurn.spec.argv.includes('cursor-session-1'));
     assert.strictEqual(resumedCompletion.reason, 'success');

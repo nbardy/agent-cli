@@ -950,3 +950,28 @@ describe('resolve', () => {
     );
   });
 });
+
+// =============================================================================
+// Bypass coverage across every harness
+// =============================================================================
+
+describe('bypassPermissions coverage', () => {
+  // opencode shipped with `bypassFlags: []`, so a caller asking for an
+  // unattended run got a silent no-op: opencode still waited on its interactive
+  // permission prompt, with no TTY to answer it. An empty bypass list is
+  // indistinguishable from "this harness needs no flag", which is why it went
+  // unnoticed — assert every harness actually emits something.
+  it('every harness emits at least one bypass flag', () => {
+    const missing = listHarnesses().filter((harness) => {
+      const off = buildCommand(harness, { prompt: 'test' }).argv;
+      const on = buildCommand(harness, { prompt: 'test', bypassPermissions: true }).argv;
+      return on.length === off.length;
+    });
+    assert.deepEqual(missing, [], 'these harnesses ignore bypassPermissions entirely');
+  });
+
+  it('maps bypassPermissions to opencode --auto', () => {
+    const spec = buildCommand('opencode', { prompt: 'test', bypassPermissions: true });
+    assert.ok(spec.argv.includes('--auto'));
+  });
+});

@@ -501,7 +501,12 @@ describe('executeCommand contract', { concurrency: true }, () => {
     );
   });
 
-  it('uses --full-auto for codex resume without adding dangerous bypass flag', async () => {
+  // The invariant under test is that `fullAuto` selects the SANDBOXED unattended
+  // mode and therefore suppresses the sandbox-removing bypass flag. The specific
+  // flag changed: `--full-auto` was retired from the Codex CLI (zero occurrences
+  // in `codex --help` / `codex exec --help` as of 2026-08), and `codex exec` is
+  // already non-interactive, so the sandbox policy is the only control left.
+  it('uses a sandboxed policy for codex resume without adding dangerous bypass flag', async () => {
     const turn = executeCommand({
       harness: 'codex',
       mode: 'conversation',
@@ -517,8 +522,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(turn.spec.argv[1], 'exec');
     assert.strictEqual(turn.spec.argv[2], 'resume');
     assert.strictEqual(turn.spec.argv[3], 'thread-resume');
-    assert.ok(turn.spec.argv.includes('--full-auto'));
+    assert.ok(turn.spec.argv.includes('-s'));
+    assert.ok(turn.spec.argv.includes('workspace-write'));
     assert.ok(turn.spec.argv.includes('--json'));
+    assert.ok(!turn.spec.argv.includes('--full-auto'), 'retired flag must not come back');
     assert.ok(!turn.spec.argv.includes('--dangerously-bypass-approvals-and-sandbox'));
 
     await turn.completed;

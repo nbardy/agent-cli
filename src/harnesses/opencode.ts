@@ -16,7 +16,11 @@ import type { HarnessConfig } from '../types.ts';
 export const opencodeConfig: HarnessConfig = {
   binary: 'opencode',
   baseCmd: ['run'],
-  bypassFlags: [],
+  // `opencode run --auto` = "auto-approve permissions that are not explicitly
+  // denied". This was the only harness with an empty bypassFlags, so a caller
+  // passing yolo/bypassPermissions got silent no-op and opencode still gated on
+  // its interactive permission prompt — with no TTY to answer it.
+  bypassFlags: ['--auto'],
   modelFlag: '-m',
   promptVia: 'cli-arg',
   stdin: 'close',

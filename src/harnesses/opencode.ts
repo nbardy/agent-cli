@@ -1,4 +1,4 @@
-import type { HarnessConfig } from '../types.ts';
+import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
  * OpenCode CLI harness config.
@@ -13,6 +13,43 @@ import type { HarnessConfig } from '../types.ts';
  *   Bare 'muse-spark-*' → 'meta/muse-spark-*' (contributor preview via Meta API)
  *   Already-qualified 'meta/*' and 'opencode/*' pass through unchanged.
  */
+/**
+ * OpenCode has NO MCP command-line flag. Config arrives through the
+ * OPENCODE_CONFIG_CONTENT env var as an inline JSON document — which is why
+ * this encoder returns `env` and not `args`, and why the caller (unleashd)
+ * could never implement this itself: only the spawn site can set env.
+ *
+ * Verified empirically on 2026-08-21 against the installed binary:
+ *   - the server is loaded and dialed (`opencode mcp list` shows it, failing
+ *     only because the probe command was not a real MCP server);
+ *   - `cwd` IS honored — a probe server wrote its own pwd and it matched the
+ *     configured cwd, not the process cwd;
+ *   - the content MERGES with ~/.config/opencode/opencode.json rather than
+ *     replacing it (the user's custom `meta` provider models survived), so
+ *     this satisfies the additive-encoder rule.
+ * OpenCode ignores unknown keys silently, so a schema typo will NOT error —
+ * re-probe behaviourally rather than trusting acceptance.
+ *
+ * Shape differs from claude's: `command` is ONE array (binary followed by its
+ * args), not split command/args. There is no per-server "required" knob, so
+ * `spec.required` cannot be honored.
+ *
+ * Caveat: this OVERWRITES any OPENCODE_CONFIG_CONTENT already in the
+ * environment. Nothing in this repo sets it; a caller that does would lose it.
+ */
+function opencodeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
+  const mcp: Record<string, unknown> = {};
+  for (const [name, spec] of Object.entries(servers)) {
+    mcp[name] = {
+      type: 'local',
+      command: [spec.command, ...spec.args],
+      enabled: true,
+      ...(spec.cwd ? { cwd: spec.cwd } : {}),
+    };
+  }
+  return { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } };
+}
+
 export const opencodeConfig: HarnessConfig = {
   binary: 'opencode',
   baseCmd: ['run'],
@@ -43,4 +80,6 @@ export const opencodeConfig: HarnessConfig = {
     }
     return ['-m', modelId];
   },
+
+  mcp: (servers) => opencodeMcpEncoding(servers),
 };

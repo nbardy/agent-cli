@@ -48,6 +48,9 @@ export function runCommand(
   const child = spawn(effectiveBin, args, {
     cwd: options.cwd,
     detached: options.detached === true,
+    // Harness-provided env is an overlay. Replacing process.env here would
+    // drop PATH, credentials, and provider configuration from the child.
+    ...(spec.env ? { env: { ...process.env, ...spec.env } } : {}),
     stdio: ['pipe', useCallbacks ? 'pipe' : 'inherit', useCallbacks ? 'pipe' : 'inherit'],
   });
 

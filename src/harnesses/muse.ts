@@ -20,6 +20,10 @@ import type { HarnessConfig } from '../types.ts';
  *
  * Workspace:
  *   --workspace <PATH> on first turn only (resume inherits workspace)
+ *
+ * No `mcp` encoder: `muse --help` and `muse exec --help` expose no MCP
+ * configuration surface. Absence is deliberate and reported through
+ * `harnessSupportsMcp('muse')`.
  */
 export const museConfig: HarnessConfig = {
   binary: 'muse',

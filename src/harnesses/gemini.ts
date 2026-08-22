@@ -12,6 +12,12 @@ import type { HarnessConfig } from '../types.ts';
  *
  * Permissions:
  *   --yolo bypasses all confirmation prompts.
+ *
+ * No `mcp` encoder: Gemini CLI supports MCP through settings files, but its
+ * current official command-line surface has no additive per-process inline
+ * config argument or environment variable. `--allowed-mcp-server-names` only
+ * filters already-configured servers. Re-verify the official configuration
+ * reference before adding an encoder; do not guess `--mcp-config`.
  */
 export const geminiConfig: HarnessConfig = {
   binary: 'gemini',

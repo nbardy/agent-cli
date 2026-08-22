@@ -223,6 +223,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     fork: session.fork,
     cwd: request.cwd,
     bypassPermissions,
+    mcpServers: request.mcpServers,
     extraArgs: [
       ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto),
       ...(request.extraArgs ?? []),

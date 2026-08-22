@@ -17,6 +17,9 @@ import type { HarnessConfig } from '../types.ts';
  * Fallback to `cursor-agent` is handled in resolveBinary/process-runner.
  *
  * No sessionForkFlags / emulateFork: Cursor absent from FORK_CAPABLE_PROVIDERS.
+ * No `mcp` encoder either: the current `agent --help` surface documents no
+ * MCP flag or per-process config environment. Absence is deliberate and
+ * reported through `harnessSupportsMcp('cursor')`.
  */
 export const cursorConfig: HarnessConfig = {
   binary: 'agent',

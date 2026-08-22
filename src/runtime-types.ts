@@ -1,5 +1,12 @@
 import type { ChildProcess } from 'node:child_process';
-import type { BuildOptions, CommandSpec, GeminiAlias, Harness, HarnessName } from './types.ts';
+import type {
+  BuildOptions,
+  CommandSpec,
+  GeminiAlias,
+  Harness,
+  HarnessName,
+  McpServerSpec,
+} from './types.ts';
 
 export interface RunOptions extends BuildOptions {
   onStdout?: (data: Buffer) => void;
@@ -55,6 +62,8 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   cwd: string;
   model?: string;
   extraArgs?: readonly string[];
+  /** Canonical stdio MCP servers; the selected harness owns provider-specific encoding. */
+  mcpServers?: Readonly<Record<string, McpServerSpec>>;
   sessionId?: string;
   resumeSessionId?: string;
   forkSessionId?: string;

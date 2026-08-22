@@ -54,6 +54,35 @@ export type StdinBehavior = 'close' | 'prompt' | 'pipe';
 export type StdoutBehavior = 'jsonl' | 'text' | 'ignore';
 
 // =============================================================================
+// MCP (Model Context Protocol) servers
+// =============================================================================
+
+/**
+ * Canonical, provider-agnostic description of one stdio MCP server.
+ *
+ * Callers describe WHAT to launch; each HarnessConfig.mcp encoder owns HOW that
+ * gets expressed on its CLI (TOML `-c` fragments, a JSON flag, an env var, ...).
+ * No caller should ever encode per-CLI MCP syntax itself.
+ */
+export interface McpServerSpec {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd?: string;
+  /** Fail the turn if the server cannot start, rather than running without it. */
+  readonly required?: boolean;
+}
+
+/**
+ * The result of encoding MCP servers for one harness: extra argv entries,
+ * extra process env, or both. A harness may need only one of the two
+ * (opencode is env-only; claude and codex are args-only).
+ */
+export interface McpEncoding {
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+// =============================================================================
 // Harness config — pure data describing CLI syntax
 // =============================================================================
 
@@ -74,6 +103,20 @@ export interface HarnessConfig {
 
   /** Flags to bypass all confirmation prompts */
   readonly bypassFlags: readonly string[];
+
+  /**
+   * Encode MCP servers for this CLI.
+   *
+   * ABSENT means this harness has NO MCP support at all — not "not wired up
+   * yet". buildCommand rejects required servers and ignores optional servers
+   * for such harnesses. `harnessSupportsMcp(name)` lets callers reject an
+   * incompatible job before building it. Every harness that leaves this field
+   * out carries a comment saying why.
+   *
+   * Encoders are additive: they must never disable the user's own
+   * globally-configured MCP servers.
+   */
+  readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
 
   /** Flag name for model selection (e.g. '--model' or '-m') */
   readonly modelFlag: string;
@@ -217,6 +260,14 @@ export interface BuildOptions {
 
   /** Extra args appended after all generated args (project-specific flags) */
   extraArgs?: readonly string[];
+
+  /**
+   * MCP servers to expose to the agent, keyed by server name.
+   *
+   * Encoded by the harness config's `mcp` encoder. Harnesses with no `mcp`
+   * encoder ignore this field entirely (see HarnessConfig.mcp).
+   */
+  mcpServers?: Readonly<Record<string, McpServerSpec>>;
 }
 
 // =============================================================================
@@ -239,4 +290,11 @@ export interface CommandSpec {
 
   /** The prompt text (for stdin delivery or caller reference) */
   prompt?: string;
+
+  /**
+   * Extra environment variables the process must be spawned with (e.g.
+   * opencode's OPENCODE_CONFIG_CONTENT). MERGE these over the inherited
+   * environment — never use them as a replacement env.
+   */
+  env?: Readonly<Record<string, string>>;
 }

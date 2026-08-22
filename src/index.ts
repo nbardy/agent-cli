@@ -28,6 +28,8 @@ export type {
   PromptDelivery,
   StdinBehavior,
   StdoutBehavior,
+  McpServerSpec,
+  McpEncoding,
 } from './types.ts';
 
 export { buildCommand } from './build.ts';
@@ -50,5 +52,10 @@ export type {
   TurnMode,
   CompletionReason,
 } from './run.ts';
-export { getHarness, listHarnesses, registry } from './harnesses/index.ts';
+export {
+  getHarness,
+  harnessSupportsMcp,
+  listHarnesses,
+  registry,
+} from './harnesses/index.ts';
 export { resolveBinary } from './resolve.ts';

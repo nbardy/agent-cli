@@ -1,5 +1,11 @@
 import { getHarness } from './harnesses/index.ts';
-import type { BuildOptions, CommandSpec, HarnessConfig, HarnessName } from './types.ts';
+import type {
+  BuildOptions,
+  CommandSpec,
+  HarnessConfig,
+  HarnessName,
+  McpEncoding,
+} from './types.ts';
 
 /**
  * Build a CLI command from harness name + options.
@@ -32,7 +38,8 @@ export function buildCommand(
  * Flag ordering:
  *   binary → baseCmd → sessionResume (if resuming)
  *   → bypassFlags → cwdFlag (if NOT resuming) → modelFlags
- *   → sessionCreate (if NOT resuming) → prompt → extraArgs
+ *   → sessionCreate (if NOT resuming) → harness extraArgs
+ *   → caller extraArgs → MCP args → prompt
  *
  * This ordering handles Codex resume naturally:
  *   codex exec resume <id> [flags...] -- prompt
@@ -109,6 +116,28 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
     argv.push(...options.extraArgs);
   }
 
+  // MCP encoding belongs to the harness because some CLIs take argv while
+  // others (notably OpenCode) take process environment. Keep it immediately
+  // before prompt delivery so positional prompts remain last.
+  let mcpEncoding: McpEncoding | undefined;
+  if (options.mcpServers && Object.keys(options.mcpServers).length > 0) {
+    if (config.mcp) {
+      mcpEncoding = config.mcp(options.mcpServers);
+    } else {
+      const requiredServers = Object.entries(options.mcpServers)
+        .filter(([, spec]) => spec.required)
+        .map(([name]) => name);
+      if (requiredServers.length > 0) {
+        throw new Error(
+          `Harness "${config.binary}" cannot encode required MCP server(s): ${requiredServers.join(', ')}`
+        );
+      }
+    }
+  }
+  if (mcpEncoding?.args && mcpEncoding.args.length > 0) {
+    argv.push(...mcpEncoding.args);
+  }
+
   // Prompt delivery
   //
   // If the harness expects the prompt via stdin, we do NOT append it to argv.
@@ -132,5 +161,8 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
     stdin: config.stdin,
     stdout: config.stdout,
     prompt: options.prompt,
+    ...(mcpEncoding?.env && Object.keys(mcpEncoding.env).length > 0
+      ? { env: mcpEncoding.env }
+      : {}),
   };
 }

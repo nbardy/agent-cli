@@ -48,3 +48,8 @@ export function getHarness(name: HarnessName | string): HarnessConfig {
 export function listHarnesses(): Harness[] {
   return Object.keys(registry) as Harness[];
 }
+
+/** Whether this harness can encode canonical per-process MCP server specs. */
+export function harnessSupportsMcp(name: HarnessName | string): boolean {
+  return getHarness(name).mcp !== undefined;
+}

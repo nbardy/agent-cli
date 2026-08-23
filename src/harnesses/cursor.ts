@@ -22,6 +22,7 @@ import type { HarnessConfig } from '../types.ts';
  * reported through `harnessSupportsMcp('cursor')`.
  */
 export const cursorConfig: HarnessConfig = {
+  mcpCapability: 'none',
   binary: 'agent',
   baseCmd: ['--print', '--output-format', 'stream-json', '--stream-partial-output'],
   bypassFlags: ['--force'],

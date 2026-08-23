@@ -26,6 +26,7 @@ import type { HarnessConfig } from '../types.ts';
  * `harnessSupportsMcp('muse')`.
  */
 export const museConfig: HarnessConfig = {
+  mcpCapability: 'none',
   binary: 'muse',
   baseCmd: ['exec'],
   bypassFlags: ['--yolo'],

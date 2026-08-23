@@ -29,6 +29,11 @@ import type { HarnessConfig, McpServerSpec } from '../types.ts';
 function claudeMcpArgs(servers: Readonly<Record<string, McpServerSpec>>): string[] {
   const mcpServers: Record<string, unknown> = {};
   for (const [name, spec] of Object.entries(servers)) {
+    if (spec.env && Object.keys(spec.env).length > 0) {
+      throw new Error(
+        `Claude cannot inject MCP environment without exposing values in process argv (${name})`
+      );
+    }
     mcpServers[name] = {
       command: spec.command,
       args: [...spec.args],
@@ -47,6 +52,7 @@ export const claudeConfig: HarnessConfig = {
   promptFlag: '-p',
   stdin: 'prompt',
   stdout: 'jsonl',
+  mcpCapability: 'inject',
   sessionCreateFlags: (id) => ['--session-id', id],
   sessionResumeFlags: (id) => ['--resume', id],
   // Fork: --resume <id> --fork-session assigns a new session id while

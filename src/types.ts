@@ -68,9 +68,25 @@ export interface McpServerSpec {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd?: string;
+  /**
+   * Environment requested for the MCP subprocess. Some CLIs can only forward
+   * these through their own process environment, so values are kept out of
+   * argv/config text but are not isolated from the harness process itself.
+   */
+  readonly env?: Readonly<Record<string, string>>;
   /** Fail the turn if the server cannot start, rather than running without it. */
   readonly required?: boolean;
 }
+
+/**
+ * Strength of a harness's MCP contract.
+ *
+ * `inject` means the CLI accepts configuration but may continue when that
+ * server fails. It is not sufficient for authority-bearing tools. `required`
+ * means the harness can make MCP startup a turn-admission requirement.
+ * Product policy belongs to the caller; this type only reports harness truth.
+ */
+export type McpCapability = 'none' | 'inject' | 'required';
 
 /**
  * The result of encoding MCP servers for one harness: extra argv entries,
@@ -116,6 +132,7 @@ export interface HarnessConfig {
    * Encoders are additive: they must never disable the user's own
    * globally-configured MCP servers.
    */
+  readonly mcpCapability: McpCapability;
   readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
 
   /** Flag name for model selection (e.g. '--model' or '-m') */

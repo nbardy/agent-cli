@@ -30,6 +30,7 @@ export type {
   StdoutBehavior,
   McpServerSpec,
   McpEncoding,
+  McpCapability,
 } from './types.ts';
 
 export { buildCommand } from './build.ts';
@@ -55,6 +56,7 @@ export type {
 export {
   getHarness,
   harnessSupportsMcp,
+  harnessMcpCapability,
   listHarnesses,
   registry,
 } from './harnesses/index.ts';

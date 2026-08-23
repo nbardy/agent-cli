@@ -121,12 +121,17 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
   // before prompt delivery so positional prompts remain last.
   let mcpEncoding: McpEncoding | undefined;
   if (options.mcpServers && Object.keys(options.mcpServers).length > 0) {
+    const requiredServers = Object.entries(options.mcpServers)
+      .filter(([, spec]) => spec.required)
+      .map(([name]) => name);
+    if (requiredServers.length > 0 && config.mcpCapability !== 'required') {
+      throw new Error(
+        `Harness "${config.binary}" cannot guarantee required MCP server(s): ${requiredServers.join(', ')}`
+      );
+    }
     if (config.mcp) {
       mcpEncoding = config.mcp(options.mcpServers);
     } else {
-      const requiredServers = Object.entries(options.mcpServers)
-        .filter(([, spec]) => spec.required)
-        .map(([name]) => name);
       if (requiredServers.length > 0) {
         throw new Error(
           `Harness "${config.binary}" cannot encode required MCP server(s): ${requiredServers.join(', ')}`

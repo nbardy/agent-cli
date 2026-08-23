@@ -20,6 +20,7 @@ import type { HarnessConfig } from '../types.ts';
  * reference before adding an encoder; do not guess `--mcp-config`.
  */
 export const geminiConfig: HarnessConfig = {
+  mcpCapability: 'none',
   binary: 'gemini',
   baseCmd: [],
   bypassFlags: ['--yolo'],

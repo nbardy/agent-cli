@@ -45,6 +45,7 @@ function opencodeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): 
       command: [spec.command, ...spec.args],
       enabled: true,
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
+      ...(spec.env ? { environment: spec.env } : {}),
     };
   }
   return { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } };
@@ -62,6 +63,7 @@ export const opencodeConfig: HarnessConfig = {
   promptVia: 'cli-arg',
   stdin: 'close',
   stdout: 'jsonl',
+  mcpCapability: 'inject',
 
   // Only resume if the session ID has the expected ses_ prefix
   sessionResumeFlags: (id) => (id.startsWith('ses_') ? ['--session', id, '--continue'] : []),

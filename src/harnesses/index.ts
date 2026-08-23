@@ -1,4 +1,4 @@
-import type { Harness, HarnessConfig, HarnessName } from '../types.ts';
+import type { Harness, HarnessConfig, HarnessName, McpCapability } from '../types.ts';
 import { claudeConfig } from './claude.ts';
 import { codexConfig } from './codex.ts';
 import { cursorConfig } from './cursor.ts';
@@ -51,5 +51,10 @@ export function listHarnesses(): Harness[] {
 
 /** Whether this harness can encode canonical per-process MCP server specs. */
 export function harnessSupportsMcp(name: HarnessName | string): boolean {
-  return getHarness(name).mcp !== undefined;
+  return getHarness(name).mcpCapability !== 'none';
+}
+
+/** Distinguishes best-effort injection from enforceable, fail-closed MCP. */
+export function harnessMcpCapability(name: HarnessName | string): McpCapability {
+  return getHarness(name).mcpCapability;
 }

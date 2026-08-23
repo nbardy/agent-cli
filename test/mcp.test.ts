@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildCommand, harnessSupportsMcp } from '../src/index.ts';
+import { buildCommand, harnessMcpCapability, harnessSupportsMcp } from '../src/index.ts';
 
 const buddyServer = {
   unleashd_buddy: {
@@ -13,7 +13,20 @@ const buddyServer = {
       'buddy_123',
     ],
     cwd: '/srv/unleashd/server',
+    env: { UNLEASHD_BUDDY_CONTROL_TOKEN: 'not-in-agent-argv' },
     required: true,
+  },
+} as const;
+
+const optionalBuddyServer = {
+  unleashd_buddy: { ...buddyServer.unleashd_buddy, required: false },
+} as const;
+
+const optionalBuddyServerWithoutEnv = {
+  unleashd_buddy: {
+    ...buddyServer.unleashd_buddy,
+    required: false,
+    env: undefined,
   },
 } as const;
 
@@ -38,16 +51,21 @@ describe('MCP encoding', () => {
       'mcp_servers.unleashd_buddy.required=true',
       '-c',
       'mcp_servers.unleashd_buddy.cwd="/srv/unleashd/server"',
+      '-c',
+      'mcp_servers.unleashd_buddy.env_vars=["UNLEASHD_BUDDY_CONTROL_TOKEN"]',
       '--',
       'work',
     ]);
-    assert.strictEqual(spec.env, undefined);
+    assert.deepStrictEqual(spec.env, {
+      UNLEASHD_BUDDY_CONTROL_TOKEN: 'not-in-agent-argv',
+    });
+    assert.ok(!spec.argv.some((argument) => argument.includes('not-in-agent-argv')));
   });
 
   it('encodes Claude inline without evicting globally configured servers', () => {
     const spec = buildCommand('claude', {
       prompt: 'work',
-      mcpServers: buddyServer,
+      mcpServers: optionalBuddyServerWithoutEnv,
     });
 
     assert.ok(!spec.argv.includes('--strict-mcp-config'));
@@ -73,7 +91,7 @@ describe('MCP encoding', () => {
   it('encodes OpenCode in the spawn environment and leaves the prompt last', () => {
     const spec = buildCommand('opencode', {
       prompt: 'work',
-      mcpServers: buddyServer,
+      mcpServers: optionalBuddyServer,
     });
 
     assert.strictEqual(spec.argv.at(-1), 'work');
@@ -91,6 +109,7 @@ describe('MCP encoding', () => {
           ],
           enabled: true,
           cwd: '/srv/unleashd/server',
+          environment: { UNLEASHD_BUDDY_CONTROL_TOKEN: 'not-in-agent-argv' },
         },
       },
     });
@@ -106,6 +125,24 @@ describe('MCP encoding', () => {
     assert.strictEqual(harnessSupportsMcp('cursor'), false);
   });
 
+  it('distinguishes injection from fail-closed required MCP', () => {
+    assert.strictEqual(harnessMcpCapability('codex'), 'required');
+    assert.strictEqual(harnessMcpCapability('claude'), 'inject');
+    assert.strictEqual(harnessMcpCapability('opencode'), 'inject');
+    assert.strictEqual(harnessMcpCapability('muse'), 'none');
+  });
+
+  it('rejects required MCP when a harness can only inject it', () => {
+    assert.throws(
+      () => buildCommand('claude', { prompt: 'work', mcpServers: buddyServer }),
+      /cannot guarantee required MCP server.*unleashd_buddy/
+    );
+    assert.throws(
+      () => buildCommand('opencode', { prompt: 'work', mcpServers: buddyServer }),
+      /cannot guarantee required MCP server.*unleashd_buddy/
+    );
+  });
+
   it('fails closed rather than inventing MCP syntax for Muse', () => {
     assert.throws(
       () =>
@@ -113,7 +150,7 @@ describe('MCP encoding', () => {
           prompt: 'work',
           mcpServers: buddyServer,
         }),
-      /cannot encode required MCP server.*unleashd_buddy/
+      /cannot guarantee required MCP server.*unleashd_buddy/
     );
   });
 

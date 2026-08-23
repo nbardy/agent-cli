@@ -1,5 +1,5 @@
 import { emulateForkCodex } from '../fork-emulation.ts';
-import type { HarnessConfig, McpServerSpec } from '../types.ts';
+import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
  * Codex reads MCP config as TOML `-c key=value` fragments. TOML string values
@@ -14,16 +14,26 @@ function tomlStringArray(values: readonly string[]): string {
   return `[${values.map(tomlString).join(',')}]`;
 }
 
-function codexMcpArgs(servers: Readonly<Record<string, McpServerSpec>>): string[] {
+function codexMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
   const args: string[] = [];
+  const env: Record<string, string> = {};
   for (const [name, spec] of Object.entries(servers)) {
     args.push('-c', `mcp_servers.${name}.command=${tomlString(spec.command)}`);
     args.push('-c', `mcp_servers.${name}.args=${tomlStringArray(spec.args)}`);
     args.push('-c', `mcp_servers.${name}.enabled=true`);
     if (spec.required) args.push('-c', `mcp_servers.${name}.required=true`);
     if (spec.cwd) args.push('-c', `mcp_servers.${name}.cwd=${tomlString(spec.cwd)}`);
+    if (spec.env && Object.keys(spec.env).length > 0) {
+      args.push('-c', `mcp_servers.${name}.env_vars=${tomlStringArray(Object.keys(spec.env))}`);
+      for (const [key, value] of Object.entries(spec.env)) {
+        if (key in env && env[key] !== value) {
+          throw new Error(`MCP servers require conflicting values for environment variable ${key}`);
+        }
+        env[key] = value;
+      }
+    }
   }
-  return args;
+  return { args, ...(Object.keys(env).length > 0 ? { env } : {}) };
 }
 
 /**
@@ -53,6 +63,7 @@ export const codexConfig: HarnessConfig = {
   promptSep: '--',
   stdin: 'close',
   stdout: 'jsonl',
+  mcpCapability: 'required',
   cwdFlag: '-C',
 
   // Resume changes the subcommand: 'exec resume <id>' instead of 'exec ...'
@@ -75,5 +86,5 @@ export const codexConfig: HarnessConfig = {
   // This is the only MCP path currently running in production (moved here
   // verbatim from unleashd's buddyCodexMcpArgs); byte-for-byte output shape
   // is pinned by test/mcp.test.ts.
-  mcp: (servers) => ({ args: codexMcpArgs(servers) }),
+  mcp: (servers) => codexMcpEncoding(servers),
 };

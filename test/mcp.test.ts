@@ -62,13 +62,13 @@ describe('MCP encoding', () => {
     assert.ok(!spec.argv.some((argument) => argument.includes('not-in-agent-argv')));
   });
 
-  it('encodes Claude inline without evicting globally configured servers', () => {
+  it('encodes Claude inline with an isolated MCP configuration', () => {
     const spec = buildCommand('claude', {
       prompt: 'work',
-      mcpServers: optionalBuddyServerWithoutEnv,
+      mcpServers: buddyServer,
     });
 
-    assert.ok(!spec.argv.includes('--strict-mcp-config'));
+    assert.ok(spec.argv.includes('--strict-mcp-config'));
     const flagIndex = spec.argv.indexOf('--mcp-config');
     assert.notStrictEqual(flagIndex, -1);
     assert.deepStrictEqual(JSON.parse(spec.argv[flagIndex + 1]!), {
@@ -86,6 +86,10 @@ describe('MCP encoding', () => {
         },
       },
     });
+    assert.deepStrictEqual(spec.env, {
+      UNLEASHD_BUDDY_CONTROL_TOKEN: 'not-in-agent-argv',
+    });
+    assert.ok(!spec.argv.some((argument) => argument.includes('not-in-agent-argv')));
   });
 
   it('encodes OpenCode in the spawn environment and leaves the prompt last', () => {
@@ -127,16 +131,12 @@ describe('MCP encoding', () => {
 
   it('distinguishes injection from fail-closed required MCP', () => {
     assert.strictEqual(harnessMcpCapability('codex'), 'required');
-    assert.strictEqual(harnessMcpCapability('claude'), 'inject');
+    assert.strictEqual(harnessMcpCapability('claude'), 'required');
     assert.strictEqual(harnessMcpCapability('opencode'), 'inject');
     assert.strictEqual(harnessMcpCapability('muse'), 'none');
   });
 
   it('rejects required MCP when a harness can only inject it', () => {
-    assert.throws(
-      () => buildCommand('claude', { prompt: 'work', mcpServers: buddyServer }),
-      /cannot guarantee required MCP server.*unleashd_buddy/
-    );
     assert.throws(
       () => buildCommand('opencode', { prompt: 'work', mcpServers: buddyServer }),
       /cannot guarantee required MCP server.*unleashd_buddy/

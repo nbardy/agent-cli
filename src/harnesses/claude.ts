@@ -1,4 +1,4 @@
-import type { HarnessConfig, McpServerSpec } from '../types.ts';
+import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
  * Claude CLI harness config.
@@ -18,21 +18,29 @@ import type { HarnessConfig, McpServerSpec } from '../types.ts';
  * file path or an inline JSON document. Inline avoids a temp file we would
  * then have to reap.
  *
- * Deliberately NO `--strict-mcp-config`: that flag makes claude ignore every
- * other MCP configuration, so an injected server would silently evict the
- * user's own workspace servers. Codex's `-c` overlay is additive and this must
- * match — see HarnessConfig.mcp.
+ * Buddy turns use `--strict-mcp-config` so the process has a deterministic MCP
+ * surface. This intentionally does not merge the user's global MCP servers:
+ * authority-bearing Buddy tools must not be shadowed by or mixed with an
+ * unrelated workspace configuration. Ordinary Claude conversations do not
+ * pass MCP config and keep the normal global configuration behavior.
  *
- * Claude's schema has no per-server "required" knob, so `spec.required` cannot
- * be honored here; claude starts the turn even if the server fails to boot.
+ * Claude has no per-server "required" knob. The harness-level `required`
+ * capability therefore means that required servers are encoded in an explicit,
+ * isolated process configuration; the caller still owns the Buddy tool contract.
  */
-function claudeMcpArgs(servers: Readonly<Record<string, McpServerSpec>>): string[] {
+function claudeMcpEncoding(
+  servers: Readonly<Record<string, McpServerSpec>>
+): McpEncoding {
   const mcpServers: Record<string, unknown> = {};
+  const env: Record<string, string> = {};
   for (const [name, spec] of Object.entries(servers)) {
-    if (spec.env && Object.keys(spec.env).length > 0) {
-      throw new Error(
-        `Claude cannot inject MCP environment without exposing values in process argv (${name})`
-      );
+    if (spec.env) {
+      for (const [key, value] of Object.entries(spec.env)) {
+        if (key in env && env[key] !== value) {
+          throw new Error(`MCP servers require conflicting values for environment variable ${key}`);
+        }
+        env[key] = value;
+      }
     }
     mcpServers[name] = {
       command: spec.command,
@@ -40,7 +48,10 @@ function claudeMcpArgs(servers: Readonly<Record<string, McpServerSpec>>): string
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
     };
   }
-  return ['--mcp-config', JSON.stringify({ mcpServers })];
+  return {
+    args: ['--strict-mcp-config', '--mcp-config', JSON.stringify({ mcpServers })],
+    ...(Object.keys(env).length > 0 ? { env } : {}),
+  };
 }
 
 export const claudeConfig: HarnessConfig = {
@@ -52,7 +63,7 @@ export const claudeConfig: HarnessConfig = {
   promptFlag: '-p',
   stdin: 'prompt',
   stdout: 'jsonl',
-  mcpCapability: 'inject',
+  mcpCapability: 'required',
   sessionCreateFlags: (id) => ['--session-id', id],
   sessionResumeFlags: (id) => ['--resume', id],
   // Fork: --resume <id> --fork-session assigns a new session id while
@@ -65,5 +76,5 @@ export const claudeConfig: HarnessConfig = {
   // See `claude --help`. Flag is session-wide and works with -p/--print.
   reasoningFlags: (level) => ['--effort', level],
 
-  mcp: (servers) => ({ args: claudeMcpArgs(servers) }),
+  mcp: claudeMcpEncoding,
 };

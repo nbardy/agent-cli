@@ -6,7 +6,7 @@
 // `defaultModelId` must match one `id` in `models`. `isDefault` is UI hint.
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 {
-  "revision": "2026-08-06.muse-spark-1.2",
+  "revision": "2026-09-06.fable-5.1-gpt-6-astra",
   "providers": [
     {
       "id": "claude",
@@ -15,7 +15,7 @@
       "defaultModelId": "opus",
       "supportsDynamicModels": false,
       "models": [
-        { "id": "fable", "displayName": "Claude Fable 5", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
+        { "id": "fable", "displayName": "Claude Fable 5.1", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "opus", "displayName": "Claude Opus 5", "isDefault": true, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "sonnet", "displayName": "Claude Sonnet", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "haiku", "displayName": "Claude Haiku", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } }
@@ -34,6 +34,7 @@
         { "id": "gpt-5.5", "displayName": "GPT-5.5", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
         { "id": "gpt-5.4", "displayName": "GPT-5.4", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
         { "id": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
+        { "id": "gpt-6-astra", "displayName": "GPT-6 Astra", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
         { "id": "gpt-5.3-codex-spark", "displayName": "Codex Spark", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } }
       ]
     },

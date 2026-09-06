@@ -774,6 +774,7 @@ describe('model loop', () => {
       'gpt-5.6-terra',
       'gpt-5.6-luna',
       'gpt-5.5',
+      'gpt-6-astra',
       'gpt-5.3-codex-high',
       'gpt-5.3-codex-medium',
       'gpt-5.3-codex-xhigh',

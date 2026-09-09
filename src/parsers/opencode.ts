@@ -33,12 +33,20 @@ export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
     case 'tool_use':
     case 'tool': {
       const part = asObject(obj.part) ?? {};
+      const state = asObject(part.state);
       return [
         {
           type: 'tool.use',
           name: asString(part.tool) ?? asString(obj.tool) ?? 'tool',
-          input: asObject(asObject(part.state)?.input) ?? {},
+          input: asObject(state?.input) ?? {},
         },
+        ...(state?.status === 'completed' || state?.status === 'error'
+          ? [{
+              type: 'tool.result' as const,
+              output: state.output,
+              isError: state.status === 'error',
+            }]
+          : []),
       ];
     }
     case 'step_finish': {

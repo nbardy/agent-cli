@@ -39,10 +39,10 @@ export function buildCommand(
  *   binary → baseCmd → sessionResume (if resuming)
  *   → bypassFlags → cwdFlag (if NOT resuming) → modelFlags
  *   → sessionCreate (if NOT resuming) → harness extraArgs
- *   → caller extraArgs → MCP args → prompt
+ *   → caller extraArgs → MCP args → prompt argument or stdin marker
  *
  * This ordering handles Codex resume naturally:
- *   codex exec resume <id> [flags...] -- prompt
+ *   codex exec resume <id> [flags...] -
  * And suppresses cwdFlag on resume (session already has a cwd).
  */
 function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandSpec {
@@ -145,9 +145,12 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
 
   // Prompt delivery
   //
-  // If the harness expects the prompt via stdin, we do NOT append it to argv.
-  // The caller is responsible for writing spec.prompt to stdin after spawn.
-  if (options.prompt && config.stdin !== 'prompt') {
+  // If the harness expects the prompt via stdin, append only its optional
+  // stdin marker. process-runner writes spec.prompt after spawn, keeping large
+  // prompts out of the operating system's argv size limit.
+  if (options.prompt && config.stdin === 'prompt') {
+    if (config.stdinPromptArg) argv.push(config.stdinPromptArg);
+  } else if (options.prompt) {
     switch (config.promptVia) {
       case 'flag':
         argv.push(config.promptFlag!, options.prompt);
@@ -158,6 +161,8 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
       case 'cli-sep':
         argv.push(config.promptSep!, options.prompt);
         break;
+      case 'stdin':
+        throw new Error('Harness prompt delivery is stdin but stdin behavior is not prompt');
     }
   }
 

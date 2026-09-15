@@ -60,4 +60,6 @@ export {
   listHarnesses,
   registry,
 } from './harnesses/index.ts';
+export { buildMuseMcpConfigDir, museConfigRoot } from './muse-mcp-settings.ts';
+export type { MuseMcpConfigDir } from './muse-mcp-settings.ts';
 export { resolveBinary } from './resolve.ts';

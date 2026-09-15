@@ -190,7 +190,14 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
         ];
       }
       if (itemType === 'mcp_tool_call') {
-        return [{ type: 'tool.use', name: asString(item?.name) ?? 'mcp_tool', input: {} }];
+        return [
+          { type: 'tool.use', name: asString(item?.name) ?? 'mcp_tool', input: {} },
+          {
+            type: 'tool.result',
+            output: item?.result,
+            isError: !!item?.error || item?.status === 'failed',
+          },
+        ];
       }
       if (itemType === 'web_search') {
         return [{ type: 'tool.use', name: 'web_search', input: {} }];

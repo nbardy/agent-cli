@@ -1,3 +1,4 @@
+import { buildMuseMcpConfigDir } from '../muse-mcp-settings.ts';
 import type { HarnessConfig } from '../types.ts';
 
 /**
@@ -21,12 +22,17 @@ import type { HarnessConfig } from '../types.ts';
  * Workspace:
  *   --workspace <PATH> on first turn only (resume inherits workspace)
  *
- * No `mcp` encoder: `muse --help` and `muse exec --help` expose no MCP
- * configuration surface. Absence is deliberate and reported through
- * `harnessSupportsMcp('muse')`.
+ * MCP encoding is file-based: muse takes no MCP argv or env, so the encoder
+ * merges canonical server specs into the `mcp_servers` block of a copy of
+ * the user's settings.json and redirects the child via XDG_CONFIG_HOME (see
+ * muse-mcp-settings.ts). Entries carry explicit `mode` (required/optional)
+ * and the CLI aborts the run when a required server fails startup, which is
+ * the behavioral fail-closed contract Buddy turns require — verified
+ * empirically: a nonexistent required command ends the run with
+ * `run.terminal.failed` before any model step.
  */
 export const museConfig: HarnessConfig = {
-  mcpCapability: 'none',
+  mcpCapability: 'required',
   binary: 'muse',
   baseCmd: ['exec'],
   bypassFlags: ['--yolo'],
@@ -35,6 +41,14 @@ export const museConfig: HarnessConfig = {
   stdin: 'close',
   stdout: 'jsonl',
   cwdFlag: '--workspace',
+
+  // File-based MCP: materialize the merged settings dir and redirect the
+  // child at it. Additive — the user's own servers survive the merge, and a
+  // name conflict with different content throws instead of shadowing.
+  mcp: (servers) => {
+    const { baseDir } = buildMuseMcpConfigDir(servers);
+    return { env: { XDG_CONFIG_HOME: baseDir } };
+  },
 
   // Both create and resume use the same flag; build.ts suppresses create on resume
   sessionCreateFlags: (id) => ['--session-id', id],

@@ -108,6 +108,7 @@ export type UnifiedAgentEvent =
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
   | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }
+  | { type: 'tool.result'; output: unknown; isError?: boolean }
   | UnifiedSubagentStateEvent
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }

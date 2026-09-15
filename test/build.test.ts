@@ -80,7 +80,7 @@ describe('claude', () => {
 // =============================================================================
 
 describe('codex', () => {
-  it('builds first turn with exec, -C, and -- separator', () => {
+  it('builds first turn with exec, -C, and stdin prompt delivery', () => {
     const spec = buildCommand('codex', {
       model: 'gpt-5.3-codex-high',
       prompt: 'hello',
@@ -94,10 +94,10 @@ describe('codex', () => {
       '-m',
       'gpt-5.3-codex-high',
       '--skip-git-repo-check',
-      '--',
-      'hello',
+      '-',
     ]);
-    assert.strictEqual(spec.stdin, 'close');
+    assert.strictEqual(spec.prompt, 'hello');
+    assert.strictEqual(spec.stdin, 'prompt');
   });
 
   it('fork throws — codex has no native non-interactive fork (TBD cp+resume)', () => {
@@ -124,6 +124,9 @@ describe('codex', () => {
     assert.strictEqual(spec.argv[1], 'exec');
     assert.strictEqual(spec.argv[2], 'resume');
     assert.strictEqual(spec.argv[3], 'thread-abc');
+    assert.strictEqual(spec.argv.at(-1), '-');
+    assert.ok(!spec.argv.includes('continue'));
+    assert.strictEqual(spec.stdin, 'prompt');
   });
 
   it('suppresses -C on resume', () => {
@@ -547,10 +550,10 @@ describe('oompa patterns', () => {
     });
     // --skip-git-repo-check is in codex bypassFlags (needed for worktrees)
     assert.ok(spec.argv.includes('--skip-git-repo-check'));
-    // It must come BEFORE the -- separator (it's a flag, not a positional arg)
-    const sepIdx = spec.argv.indexOf('--');
+    // It must come BEFORE the stdin marker (it's a flag, not a positional arg)
+    const stdinIdx = spec.argv.indexOf('-');
     const flagIdx = spec.argv.indexOf('--skip-git-repo-check');
-    assert.ok(flagIdx < sepIdx, '--skip-git-repo-check must be before -- separator');
+    assert.ok(flagIdx < stdinIdx, '--skip-git-repo-check must be before the stdin marker');
   });
 });
 

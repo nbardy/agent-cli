@@ -59,9 +59,9 @@ export const codexConfig: HarnessConfig = {
   // --dangerously-bypass-approvals-and-sandbox: skip all confirmations.
   bypassFlags: ['--dangerously-bypass-approvals-and-sandbox'],
   modelFlag: '-m',
-  promptVia: 'cli-sep',
-  promptSep: '--',
-  stdin: 'close',
+  promptVia: 'stdin',
+  stdin: 'prompt',
+  stdinPromptArg: '-',
   stdout: 'jsonl',
   mcpCapability: 'required',
   cwdFlag: '-C',

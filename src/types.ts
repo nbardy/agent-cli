@@ -25,8 +25,9 @@ export type HarnessName = Harness | GeminiAlias;
  * flag:     Value of a named flag (e.g. `-p "prompt"`)
  * cli-arg:  Last positional argument (e.g. `opencode run "prompt"`)
  * cli-sep:  After a separator (e.g. `codex exec -- "prompt"`)
+ * stdin:    Written to the child process stdin, optionally with stdinPromptArg
  */
-export type PromptDelivery = 'flag' | 'cli-arg' | 'cli-sep';
+export type PromptDelivery = 'flag' | 'cli-arg' | 'cli-sep' | 'stdin';
 
 /**
  * What the caller should do with process stdin after spawning.
@@ -149,6 +150,9 @@ export interface HarnessConfig {
 
   /** What the caller should do with process stdin */
   readonly stdin: StdinBehavior;
+
+  /** Positional marker telling the CLI to read the prompt from stdin (for example Codex `-`). */
+  readonly stdinPromptArg?: string;
 
   /** What the caller should expect from process stdout */
   readonly stdout: StdoutBehavior;

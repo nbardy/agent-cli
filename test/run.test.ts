@@ -10,10 +10,13 @@ function writeCodexShim(binDir: string): void {
   const shimPath = path.join(binDir, 'codex');
   const shimSource = `#!/usr/bin/env node
 const args = process.argv.slice(2);
-const sep = args.indexOf('--');
-const prompt = sep >= 0 ? (args[sep + 1] ?? '') : '';
+let prompt = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => { prompt += chunk; });
+process.stdin.on('end', main);
 const emit = (obj) => process.stdout.write(JSON.stringify(obj) + '\\n');
 
+function main() {
 if (prompt === 'contract-success') {
   emit({ type: 'thread.started', thread_id: 'thread-final' });
   emit({ type: 'turn.started' });
@@ -197,6 +200,7 @@ if (prompt === 'contract-subagent-lifecycle') {
 }
 
 if (prompt !== 'contract-detached-multi-event') process.exit(0);
+}
 `;
 
   writeFileSync(shimPath, shimSource);

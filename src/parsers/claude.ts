@@ -69,6 +69,17 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
       return [];
     }
 
+    if (obj.type === 'user') {
+      const content = asObject(obj.message)?.content;
+      if (!Array.isArray(content)) return [];
+      return content.flatMap((item): UnifiedAgentEvent[] => {
+        const block = asObject(item);
+        return block?.type === 'tool_result'
+          ? [{ type: 'tool.result', output: block.content, isError: block.is_error === true }]
+          : [];
+      });
+    }
+
     if (obj.type === 'result') {
       return asString(obj.subtype) === 'success'
         ? [{ type: 'turn.complete', reason: 'success' }]

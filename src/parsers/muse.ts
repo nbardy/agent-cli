@@ -37,6 +37,22 @@ export function parseMuse(json: unknown): UnifiedAgentEvent[] {
         'Muse run failed';
       return failureEvents(reason);
     }
+    case 'tool.result': {
+      // The CLI executes MCP tools in-process; this is the observable
+      // completion, with the namespaced tool name in correlation_facts.
+      const facts = asObject(payload?.correlation_facts);
+      const name = asString(facts?.tool_name) ?? 'mcp_tool';
+      return [
+        { type: 'tool.use', name, input: {} },
+        ...(typeof payload?.text === 'string'
+          ? [{
+              type: 'tool.result' as const,
+              output: payload.text,
+              isError: facts?.outcome === 'error' || facts?.outcome === 'failed',
+            }]
+          : []),
+      ];
+    }
     case 'task.stream.linked':
     case 'task.lifecycle.proposed':
     case 'task.lifecycle.accepted':

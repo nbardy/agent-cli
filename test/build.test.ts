@@ -795,6 +795,9 @@ describe('model loop', () => {
       'meta/muse-spark-1.1',
       'meta/muse-spark-1.2-contributor',
       'muse-spark-1.2-contributor', // bare form → meta/ qualified
+      'meta/muse-spark-1.3',
+      'muse-spark-1.3', // bare form → meta/ qualified
+      'meta/muse-spark-1.3-contributor',
     ],
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
     cursor: [
@@ -803,7 +806,7 @@ describe('model loop', () => {
       'cursor-grok-4.5-medium',
       'cursor-grok-4.5-low',
     ],
-    muse: ['muse-spark-1.1', 'muse-spark-1.2-contributor'],
+    muse: ['muse-spark-1.1', 'muse-spark-1.2-contributor', 'muse-spark-1.3', 'muse-spark-1.3-contributor'],
   };
 
   function expectedBinary(harness: string): string {

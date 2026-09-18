@@ -76,6 +76,16 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
 type CodexExecuteCommandRequest = BaseExecuteCommandRequest<'codex'> & {
   reasoningEffort?: string;
   fullAuto?: boolean;
+  /**
+   * Enable codex's live web search tool.
+   *
+   * Codex's own `--search` is a TOP-LEVEL flag -- `codex --search exec ...` --
+   * so it cannot be reached through `extraArgs`, which are appended after the
+   * `exec` subcommand (`codex exec --search` is rejected outright). The
+   * equivalent that does work after the subcommand is the config override
+   * `-c tools.web_search=true`, verified against `codex --strict-config`.
+   */
+  webSearch?: boolean;
 };
 
 type ClaudeExecuteCommandRequest = BaseExecuteCommandRequest<'claude'> & {

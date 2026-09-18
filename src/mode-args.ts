@@ -15,12 +15,20 @@ import type { Harness } from './types.ts';
  */
 const CODEX_FULL_AUTO_ARGS = ['-s', 'workspace-write'] as const;
 
+/**
+ * `-c tools.web_search=true` is the post-subcommand equivalent of codex's
+ * top-level `--search`. It must be a config override: `codex exec --search`
+ * is rejected, because --search is parsed before the subcommand.
+ */
+const CODEX_WEB_SEARCH_ARGS = ['-c', 'tools.web_search=true'] as const;
+
 export function buildModeExtraArgs(
   harness: Harness,
   mode: TurnMode,
   yolo: boolean,
   cwd: string,
-  codexFullAuto: boolean
+  codexFullAuto: boolean,
+  codexWebSearch = false
 ): readonly string[] {
   if (mode === 'single-shot') {
     switch (harness) {
@@ -29,7 +37,10 @@ export function buildModeExtraArgs(
       case 'gemini':
         return ['--output-format', 'text'];
       case 'codex':
-        return codexFullAuto ? [...CODEX_FULL_AUTO_ARGS] : [];
+        return [
+          ...(codexFullAuto ? CODEX_FULL_AUTO_ARGS : []),
+          ...(codexWebSearch ? CODEX_WEB_SEARCH_ARGS : []),
+        ];
       default:
         return [];
     }
@@ -49,7 +60,11 @@ export function buildModeExtraArgs(
       return args;
     }
     case 'codex':
-      return codexFullAuto ? [...CODEX_FULL_AUTO_ARGS, '--json'] : ['--json'];
+      return [
+        ...(codexFullAuto ? CODEX_FULL_AUTO_ARGS : []),
+        ...(codexWebSearch ? CODEX_WEB_SEARCH_ARGS : []),
+        '--json',
+      ];
     case 'gemini':
       return ['--output-format', 'stream-json'];
     case 'opencode':

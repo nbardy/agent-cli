@@ -156,6 +156,8 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const yolo = request.yolo !== false;
   const codexFullAuto =
     canonicalHarness === 'codex' && 'fullAuto' in request && request.fullAuto === true;
+  const codexWebSearch =
+    canonicalHarness === 'codex' && 'webSearch' in request && request.webSearch === true;
   const bypassPermissions = yolo && !(canonicalHarness === 'codex' && codexFullAuto);
   const session = prepareSession(request);
   const parse = createParser(canonicalHarness);
@@ -225,7 +227,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     bypassPermissions,
     mcpServers: request.mcpServers,
     extraArgs: [
-      ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto),
+      ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto, codexWebSearch),
       ...(request.extraArgs ?? []),
     ],
     ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude' || canonicalHarness === 'muse')

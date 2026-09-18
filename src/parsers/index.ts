@@ -4,7 +4,7 @@ import { createClaudeParser } from './claude.ts';
 import { parseCodex } from './codex.ts';
 import { createCursorParser } from './cursor.ts';
 import { parseGemini } from './gemini.ts';
-import { parseMuse } from './muse.ts';
+import { createMuseParser } from './muse.ts';
 import { parseOpenCode } from './opencode.ts';
 
 export type HarnessParser = (json: unknown) => UnifiedAgentEvent[];
@@ -22,6 +22,6 @@ export function createParser(harness: Harness): HarnessParser {
     case 'cursor':
       return createCursorParser();
     case 'muse':
-      return parseMuse;
+      return createMuseParser();
   }
 }

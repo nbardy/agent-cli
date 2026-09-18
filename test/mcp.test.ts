@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { buildCommand, harnessMcpCapability, harnessSupportsMcp } from '../src/index.ts';
-import { parseMuse } from '../src/parsers/muse.ts';
+import { createMuseParser } from '../src/parsers/muse.ts';
 
 const buddyServer = {
   unleashd_buddy: {
@@ -280,7 +280,7 @@ describe('MCP encoding', () => {
 
   it('surfaces muse tool.result completions as tool.use', () => {
     assert.deepStrictEqual(
-      parseMuse({
+      createMuseParser()({
         payload_type: 'tool.result',
         payload: {
           call_id: 'call_1',
@@ -293,7 +293,7 @@ describe('MCP encoding', () => {
         { type: 'tool.result', output: 'pong:hello', isError: false },
       ]
     );
-    assert.deepStrictEqual(parseMuse({ payload_type: 'tool.result', payload: {} }), [
+    assert.deepStrictEqual(createMuseParser()({ payload_type: 'tool.result', payload: {} }), [
       { type: 'tool.use', name: 'mcp_tool', input: {} },
     ]);
   });

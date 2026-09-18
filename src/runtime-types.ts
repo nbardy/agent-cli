@@ -113,7 +113,10 @@ export type UnifiedAgentEvent =
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
   | { type: 'error'; message: string }
-  | { type: 'turn.complete'; reason: CompletionReason }
+  // `text` carries the complete final message when the harness reports one
+  // separately from its incremental deltas (muse does). It is NOT a substitute
+  // for accumulating text.delta -- it is absent on harnesses that only stream.
+  | { type: 'turn.complete'; reason: CompletionReason; text?: string }
   | { type: 'stderr'; text: string };
 
 export interface ExecuteCommandCompletion {

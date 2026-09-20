@@ -113,6 +113,34 @@ export type ExecuteCommandRequest =
   | NoExtraExecuteCommandRequest<'cursor'>
   | NoExtraExecuteCommandRequest<GeminiAlias>;
 
+/**
+ * Provider-counted tokens for one request. Every field is a number the harness
+ * itself reported -- this type never carries an estimate, so a consumer can
+ * treat it as billing truth rather than a guess.
+ *
+ * `contextTokens` is canonicalized here because the harnesses disagree on what
+ * "input" means: claude reports cache hits in SEPARATE fields that must be
+ * added back, while codex reports one `input_tokens` total with the cached
+ * portion as a subset of it. Adding claude's fields is required; adding
+ * codex's would double-count the cache. Each parser resolves its own
+ * convention so nothing downstream has to know which harness spoke.
+ */
+export interface TurnUsage {
+  /** Total input the provider counted for the latest request: the live context size. */
+  contextTokens: number;
+  outputTokens: number;
+  /** Portion of `contextTokens` served from cache. Absent when the harness does not split it out. */
+  cachedInputTokens?: number;
+  /** Portion of `contextTokens` written to cache. Absent when the harness does not report it. */
+  cacheWriteTokens?: number;
+  /**
+   * The model's context window. Absent means the harness does not report one
+   * (claude and `codex exec` both omit it) -- NOT that the window is unknown
+   * to the caller, who can resolve it from the model id.
+   */
+  contextWindow?: number;
+}
+
 export type UnifiedAgentEvent =
   | { type: 'session.started'; sessionId: string }
   | { type: 'turn.started' }
@@ -122,6 +150,9 @@ export type UnifiedAgentEvent =
   | UnifiedSubagentStateEvent
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
+  // Provider-counted usage for the request that just completed. Emitted only
+  // when the harness reports real numbers; silence means it reports none.
+  | { type: 'usage'; usage: TurnUsage }
   | { type: 'error'; message: string }
   // `text` carries the complete final message when the harness reports one
   // separately from its incremental deltas (muse does). It is NOT a substitute

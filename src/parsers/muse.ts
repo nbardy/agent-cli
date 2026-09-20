@@ -12,6 +12,20 @@ import type { UnifiedAgentEvent } from '../runtime-types.ts';
  * This parser therefore tracks what it has streamed and emits only the
  * not-yet-seen suffix from the terminal event, plus the complete text on
  * `turn.complete` for consumers that want it in one piece.
+ *
+ * NO `usage` EVENT, and it is not an oversight: muse counts tokens but does
+ * not put them on stdout. Measured on Muse Code 1.3.0 -- one `muse exec --json`
+ * turn emitted 30 records (task.lifecycle.*, run.*, session.run.linked,
+ * runtime.command.accepted, turn.input.user) with zero token fields, while the
+ * same run's durable log at
+ * ~/.local/share/muse/sessions/<date>/<session>/session.jsonl held 71 records
+ * including `runtime.session` -> `model_completed` with
+ * {input_tokens, output_tokens, cached_tokens, cache_write_tokens,
+ * cache_read_tokens, reasoning_tokens}. `muse exec --help` offers no event
+ * filter, so the only way to reach those numbers is to read that file --
+ * a different mechanism (path resolution, tailing) than parsing stdout, and
+ * one the caller can do without a harness change. Re-probe before assuming
+ * this is still true; the shape is muse's to change.
  */
 export function createMuseParser(): (json: unknown) => UnifiedAgentEvent[] {
   let streamed = '';

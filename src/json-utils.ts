@@ -9,3 +9,7 @@ export function asString(value: unknown): string | undefined {
 export function normalizeType(raw: string | undefined): string | undefined {
   return raw ? raw.replace(/-/g, '_').toLowerCase() : undefined;
 }
+
+export function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}

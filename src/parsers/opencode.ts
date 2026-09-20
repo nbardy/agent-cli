@@ -1,6 +1,34 @@
 import { failureEvents } from '../diagnostics.ts';
-import { asObject, asString, normalizeType } from '../json-utils.ts';
+import { asNumber, asObject, asString, normalizeType } from '../json-utils.ts';
 import type { UnifiedAgentEvent } from '../runtime-types.ts';
+
+/**
+ * OpenCode's `tokens` block on step-finish keeps cache hits OUT of `input`,
+ * like claude -- its own `total` is the proof: a measured step read
+ * input 13,497 + output 3 + reasoning 0 + cache.read 1,792 = total 15,292.
+ * So the context is input + cache.read + cache.write, and `total` is the wrong
+ * number to show (it folds in output and reasoning, which are not context).
+ */
+function openCodeUsageEvents(rawTokens: unknown): UnifiedAgentEvent[] {
+  const tokens = asObject(rawTokens);
+  if (!tokens) return [];
+  const input = asNumber(tokens.input);
+  if (input === undefined) return [];
+  const cache = asObject(tokens.cache);
+  const cacheRead = asNumber(cache?.read);
+  const cacheWrite = asNumber(cache?.write);
+  return [
+    {
+      type: 'usage',
+      usage: {
+        contextTokens: input + (cacheRead ?? 0) + (cacheWrite ?? 0),
+        outputTokens: asNumber(tokens.output) ?? 0,
+        ...(cacheRead === undefined ? {} : { cachedInputTokens: cacheRead }),
+        ...(cacheWrite === undefined ? {} : { cacheWriteTokens: cacheWrite }),
+      },
+    },
+  ];
+}
 
 function extractAssistantText(obj: Record<string, unknown>): string | undefined {
   const direct = asString(obj.text);
@@ -51,16 +79,23 @@ export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
     }
     case 'step_finish': {
       const part = asObject(obj.part);
+      // Every step-finish is one model request, so usage rides all of them --
+      // including the `tool_calls` step that ends no turn. Mid-turn steps are
+      // where the context actually grows.
+      const usageEvents = openCodeUsageEvents(part?.tokens ?? obj.tokens);
       const reasonRaw = asString(part?.reason) ?? asString(obj.reason);
       const reason = normalizeType(reasonRaw);
-      if (reason === 'tool_calls') return [];
+      if (reason === 'tool_calls') return usageEvents;
       if (
         reason &&
         ['failed', 'error', 'abort', 'aborted', 'cancel', 'cancelled', 'canceled'].includes(reason)
       ) {
-        return failureEvents(`OpenCode step failed (${reasonRaw ?? 'unknown'})`);
+        return [
+          ...usageEvents,
+          ...failureEvents(`OpenCode step failed (${reasonRaw ?? 'unknown'})`),
+        ];
       }
-      return [{ type: 'turn.complete', reason: 'success' }];
+      return [...usageEvents, { type: 'turn.complete', reason: 'success' }];
     }
     case 'done':
     case 'complete':

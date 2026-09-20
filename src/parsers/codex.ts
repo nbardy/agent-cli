@@ -1,5 +1,5 @@
 import { failureEvents } from '../diagnostics.ts';
-import { asObject, asString } from '../json-utils.ts';
+import { asNumber, asObject, asString } from '../json-utils.ts';
 import type { UnifiedAgentEvent, UnifiedSubagentStatus } from '../runtime-types.ts';
 
 const CODEX_COLLAB_TOOL_NAMES = new Set(['spawn_agent', 'wait', 'send_input']);
@@ -118,6 +118,37 @@ function collabSubagentEvents(
   });
 }
 
+/**
+ * Codex reports ONE `input_tokens` total for the request with
+ * `cached_input_tokens` as a subset of it -- the opposite of claude, where the
+ * cache fields are separate addends. Adding them here would double-count the
+ * cache: a recorded run reads input_tokens 997,035 / cached 920,832, and the
+ * context was 997,035.
+ *
+ * `codex exec --json` carries no context window. The window lives in the
+ * internal `token_count` event (rollout files, TUI), which the exec stream
+ * does not emit, so callers resolve it from the model id instead.
+ */
+function codexUsageEvents(rawUsage: unknown): UnifiedAgentEvent[] {
+  const usage = asObject(rawUsage);
+  if (!usage) return [];
+  const input = asNumber(usage.input_tokens);
+  if (input === undefined) return [];
+  const cached = asNumber(usage.cached_input_tokens);
+  const cacheWrite = asNumber(usage.cache_write_input_tokens);
+  return [
+    {
+      type: 'usage',
+      usage: {
+        contextTokens: input,
+        outputTokens: asNumber(usage.output_tokens) ?? 0,
+        ...(cached === undefined ? {} : { cachedInputTokens: cached }),
+        ...(cacheWrite === undefined ? {} : { cacheWriteTokens: cacheWrite }),
+      },
+    },
+  ];
+}
+
 export function parseCodex(json: unknown): UnifiedAgentEvent[] {
   const obj = asObject(json);
   if (!obj) return [{ type: 'error', message: 'Codex emitted non-object JSON' }];
@@ -130,7 +161,7 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
     case 'turn.started':
       return [{ type: 'turn.started' }];
     case 'turn.completed':
-      return [{ type: 'turn.complete', reason: 'success' }];
+      return [...codexUsageEvents(obj.usage), { type: 'turn.complete', reason: 'success' }];
     case 'turn.failed': {
       const raw = obj.error;
       return failureEvents(

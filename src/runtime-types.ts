@@ -119,11 +119,13 @@ export type ExecuteCommandRequest =
  * treat it as billing truth rather than a guess.
  *
  * `contextTokens` is canonicalized here because the harnesses disagree on what
- * "input" means: claude reports cache hits in SEPARATE fields that must be
- * added back, while codex reports one `input_tokens` total with the cached
- * portion as a subset of it. Adding claude's fields is required; adding
- * codex's would double-count the cache. Each parser resolves its own
- * convention so nothing downstream has to know which harness spoke.
+ * "input" means: claude and opencode report cache hits in SEPARATE fields
+ * that must be added back to input. Each parser resolves its own convention
+ * so nothing downstream has to know which harness spoke. Codex emits no
+ * `usage` event at all: its exec-stdout `input_tokens` is the
+ * session-cumulative total, not one request's context (2026-09-22: 16,062,762
+ * stdout vs 244,247 per-request on the same session), so per-request codex
+ * truth comes only from the rollout file.
  */
 export interface TurnUsage {
   /** Total input the provider counted for the latest request: the live context size. */

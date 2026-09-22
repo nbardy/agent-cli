@@ -1,5 +1,5 @@
 import { failureEvents } from '../diagnostics.ts';
-import { asNumber, asObject, asString } from '../json-utils.ts';
+import { asObject, asString } from '../json-utils.ts';
 import type { UnifiedAgentEvent, UnifiedSubagentStatus } from '../runtime-types.ts';
 
 const CODEX_COLLAB_TOOL_NAMES = new Set(['spawn_agent', 'wait', 'send_input']);
@@ -119,35 +119,25 @@ function collabSubagentEvents(
 }
 
 /**
- * Codex reports ONE `input_tokens` total for the request with
- * `cached_input_tokens` as a subset of it -- the opposite of claude, where the
- * cache fields are separate addends. Adding them here would double-count the
- * cache: a recorded run reads input_tokens 997,035 / cached 920,832, and the
- * context was 997,035.
+ * `codex exec --json`'s `turn.completed` usage is the SESSION-CUMULATIVE total,
+ * not the latest request's context, so this parser deliberately emits NO
+ * `usage` event for codex -- the same treatment claude's turn-aggregate
+ * `result` usage gets. Reporting the aggregate as a context size overstates by
+ * the number of requests so far, and the overstatement grows without bound.
  *
- * `codex exec --json` carries no context window. The window lives in the
- * internal `token_count` event (rollout files, TUI), which the exec stream
- * does not emit, so callers resolve it from the model id instead.
+ * Evidence (2026-09-22, gpt-6-astra session 01a0c787): stdout reported
+ * input 16,062,762 / cached 15,811,968 / output 39,152, exactly matching the
+ * rollout file's `total_token_usage`, while its `last_token_usage` -- the real
+ * per-request context -- was input 244,247 on a 258,400 window. The meter
+ * showed "16.1M" against that window because the live aggregate outranked the
+ * correct file reading. An earlier single-turn fixture (input 30,735) could not
+ * distinguish the two, because last and total coincide on the first request.
+ *
+ * Per-request truth lives in the rollout file's `token_count` event
+ * (`last_token_usage` + `model_context_window`), which the exec stream does
+ * not emit. The server reads it there (session-context.ts); the window comes
+ * from the same record. `codex exec --json` carries neither.
  */
-function codexUsageEvents(rawUsage: unknown): UnifiedAgentEvent[] {
-  const usage = asObject(rawUsage);
-  if (!usage) return [];
-  const input = asNumber(usage.input_tokens);
-  if (input === undefined) return [];
-  const cached = asNumber(usage.cached_input_tokens);
-  const cacheWrite = asNumber(usage.cache_write_input_tokens);
-  return [
-    {
-      type: 'usage',
-      usage: {
-        contextTokens: input,
-        outputTokens: asNumber(usage.output_tokens) ?? 0,
-        ...(cached === undefined ? {} : { cachedInputTokens: cached }),
-        ...(cacheWrite === undefined ? {} : { cacheWriteTokens: cacheWrite }),
-      },
-    },
-  ];
-}
 
 export function parseCodex(json: unknown): UnifiedAgentEvent[] {
   const obj = asObject(json);
@@ -161,7 +151,9 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
     case 'turn.started':
       return [{ type: 'turn.started' }];
     case 'turn.completed':
-      return [...codexUsageEvents(obj.usage), { type: 'turn.complete', reason: 'success' }];
+      // No usage event: obj.usage is the session-cumulative aggregate (see
+      // above), not this request's context. The turn still completes.
+      return [{ type: 'turn.complete', reason: 'success' }];
     case 'turn.failed': {
       const raw = obj.error;
       return failureEvents(

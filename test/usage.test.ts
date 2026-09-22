@@ -97,30 +97,29 @@ test('claude subagent usage is not the parent thread context', () => {
 });
 
 /**
- * Captured from `codex exec --json`
- * (manual_tests/runs/prefix-smoke/stdout.log). Codex reports ONE input total
- * with the cached portion as a SUBSET of it -- the opposite of claude. Adding
- * them gives 60,815 for a 30,735-token context.
+ * REGRESSION 2026-09-22 (unleashd "16M tokens" meter bug): `codex exec
+ * --json` `turn.completed` usage is the SESSION-CUMULATIVE total, not the
+ * latest request's context, so it must not be reported as one -- the same rule
+ * claude's turn-aggregate `result` usage follows above. Numbers from a real
+ * gpt-6-astra session: stdout reported input 16,062,762 while the rollout
+ * file's `last_token_usage` for the same moment was 244,247 on a 258,400
+ * window. An old single-turn fixture (input 30,735) could not catch this,
+ * because last and total coincide on the first request.
  */
-test('codex context is input_tokens alone, cache already included', () => {
-  const [usage] = usageOf(
-    parseCodex({
-      type: 'turn.completed',
-      usage: { input_tokens: 30735, cached_input_tokens: 30080, output_tokens: 37 },
-    })
-  );
-  assert.ok(usage, 'turn.completed must report usage');
-  assert.equal(usage.contextTokens, 30_735);
-  assert.equal(usage.cachedInputTokens, 30_080);
-});
-
-test('codex usage does not replace the turn completion', () => {
+test('codex turn.completed carries a session aggregate and must not report context', () => {
   const events = parseCodex({
     type: 'turn.completed',
-    usage: { input_tokens: 997035, cached_input_tokens: 920832, output_tokens: 21624 },
+    usage: {
+      input_tokens: 16062762,
+      cached_input_tokens: 15811968,
+      output_tokens: 39152,
+    },
   });
-  assert.equal(usageOf(events).length, 1);
-  assert.ok(events.some((e) => e.type === 'turn.complete'));
+  assert.deepEqual(usageOf(events), [], 'cumulative usage is an aggregate, not a context size');
+  assert.ok(
+    events.some((e) => e.type === 'turn.complete'),
+    'turn.completed still completes the turn'
+  );
 });
 
 /**

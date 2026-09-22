@@ -35,6 +35,20 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
     const obj = asObject(json);
     if (!obj) return [{ type: 'error', message: 'Claude emitted non-object JSON' }];
 
+    // Provider-generated conversation labels. Observed on disk in
+    // ~/.claude/projects/<slug>/*.jsonl as {"type":"ai-title","aiTitle":"…"}
+    // (auto, re-emitted per turn) and {"type":"custom-title","customTitle":"…"}
+    // (user-set via /rename or --name). The server owns custom-over-ai
+    // precedence; the event carries the raw observation verbatim.
+    if (obj.type === 'ai-title') {
+      const title = asString(obj.aiTitle)?.trim();
+      return title ? [{ type: 'session.title', title, source: 'ai' }] : [];
+    }
+    if (obj.type === 'custom-title') {
+      const title = asString(obj.customTitle)?.trim();
+      return title ? [{ type: 'session.title', title, source: 'custom' }] : [];
+    }
+
     if (obj.type === 'system' && asString(obj.subtype) === 'init') {
       return [{ type: 'turn.started' }];
     }

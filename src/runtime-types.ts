@@ -145,6 +145,10 @@ export interface TurnUsage {
 
 export type UnifiedAgentEvent =
   | { type: 'session.started'; sessionId: string }
+  // Provider-generated conversation label. Claude emits ai-title/custom-title
+  // lines; other harnesses currently emit none. Consumers take custom over ai
+  // (the server owns that precedence); the event carries the raw observation.
+  | { type: 'session.title'; title: string; source: 'ai' | 'custom' }
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
   | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }

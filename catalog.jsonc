@@ -6,7 +6,7 @@
 // `defaultModelId` must match one `id` in `models`. `isDefault` is UI hint.
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 {
-  "revision": "2026-09-23.opus-5-5-default",
+  "revision": "2026-09-24.grok-4-7",
   "providers": [
     {
       "id": "claude",
@@ -77,6 +77,10 @@
       "supportsDynamicModels": false,
       "models": [
         { "id": "composer-2.5", "displayName": "Composer 2.5", "isDefault": true },
+        { "id": "grok-4.7-xhigh", "displayName": "Grok 4.7 Extra High", "isDefault": false },
+        { "id": "grok-4.7-high", "displayName": "Grok 4.7 High", "isDefault": false },
+        { "id": "grok-4.7-medium", "displayName": "Grok 4.7 Medium", "isDefault": false },
+        { "id": "grok-4.7-low", "displayName": "Grok 4.7 Low", "isDefault": false },
         { "id": "cursor-grok-4.5-high", "displayName": "Grok 4.5 High", "isDefault": false },
         { "id": "cursor-grok-4.5-medium", "displayName": "Grok 4.5 Medium", "isDefault": false },
         { "id": "cursor-grok-4.5-low", "displayName": "Grok 4.5 Low", "isDefault": false }

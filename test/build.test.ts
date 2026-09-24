@@ -802,6 +802,10 @@ describe('model loop', () => {
     gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
     cursor: [
       'composer-2.5',
+      'grok-4.7-xhigh',
+      'grok-4.7-high',
+      'grok-4.7-medium',
+      'grok-4.7-low',
       'cursor-grok-4.5-high',
       'cursor-grok-4.5-medium',
       'cursor-grok-4.5-low',

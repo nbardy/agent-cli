@@ -83,6 +83,17 @@ if (prompt === 'contract-stderr') {
   process.exit(0);
 }
 
+// Verbatim codex-cli 0.156.1 output captured 2026-09-24 when ChatGPT-plan
+// credits ran out (exit 1). Note the curly apostrophe in "You\u2019ve".
+if (prompt === 'contract-usage-limit') {
+  const message = 'You\u2019ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 27th, 2026 10:15 PM.';
+  emit({ type: 'thread.started', thread_id: 'thread-usage-limit' });
+  emit({ type: 'turn.started' });
+  emit({ type: 'error', message });
+  emit({ type: 'turn.failed', error: { message } });
+  process.exit(1);
+}
+
 if (prompt === 'contract-subagent-tools') {
   emit({ type: 'thread.started', thread_id: 'thread-subagents' });
   emit({ type: 'turn.started' });
@@ -464,6 +475,32 @@ describe('executeCommand contract', { concurrency: true }, () => {
       )
       .map((event) => event.reason);
     assert.deepStrictEqual(completionReasons, ['error']);
+  });
+
+  // Regression: the Buddy memory reviewer ladder advances ONLY on
+  // completion.reason === 'out_of_tokens'. Codex credits ran out on 2026-09-24
+  // with this exact text; if it ever classifies as plain 'error' the reviewer
+  // stops at rung 0 instead of falling through to the next provider.
+  it('classifies the real codex usage-limit failure as out_of_tokens', async () => {
+    const turn = executeCommand({
+      harness: 'codex',
+      mode: 'conversation',
+      prompt: 'contract-usage-limit',
+      cwd: workspace,
+      model: 'gpt-6-luna',
+      yolo: false,
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'out_of_tokens');
+    assert.ok(
+      events.some(
+        (event) => event.type === 'out_of_tokens' && /hit your usage limit/.test(event.message)
+      )
+    );
+    assert.ok(!events.some((event) => event.type === 'error'));
   });
 
   it('treats conversation exit without turn.complete as error even with exit code 0', async () => {

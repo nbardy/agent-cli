@@ -6,7 +6,7 @@
 // `defaultModelId` must match one `id` in `models`. `isDefault` is UI hint.
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 {
-  "revision": "2026-09-24.grok-4-7",
+  "revision": "2026-09-24.gpt-6-sol-luna",
   "providers": [
     {
       "id": "claude",
@@ -35,6 +35,11 @@
         { "id": "gpt-5.4", "displayName": "GPT-5.4", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
         { "id": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
         { "id": "gpt-6-astra", "displayName": "GPT-6 Astra", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
+        // gpt-6-sol / gpt-6-luna: offered by codex-cli 0.156.1 (models_cache.json 2026-09-24).
+        // Levels are what the cache reports, NOT the minimal..ultra list the older
+        // entries carry: the cache offers no "minimal" for any model and no "ultra" for Luna.
+        { "id": "gpt-6-sol", "displayName": "GPT-6 Sol", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
+        { "id": "gpt-6-luna", "displayName": "GPT-6 Luna", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "xhigh" } },
         { "id": "gpt-5.3-codex-spark", "displayName": "Codex Spark", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } }
       ]
     },

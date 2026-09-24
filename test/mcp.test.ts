@@ -131,7 +131,7 @@ describe('MCP encoding', () => {
     assert.strictEqual(harnessSupportsMcp('muse'), true);
     assert.strictEqual(harnessSupportsMcp('gemini'), false);
     assert.strictEqual(harnessSupportsMcp('gemini2'), false);
-    assert.strictEqual(harnessSupportsMcp('cursor'), false);
+    assert.strictEqual(harnessSupportsMcp('cursor'), true);
   });
 
   it('distinguishes injection from fail-closed required MCP', () => {

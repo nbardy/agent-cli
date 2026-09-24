@@ -1,13 +1,15 @@
 import { createAsyncQueue } from './async-queue.ts';
 import {
+  classifyError,
   flushDebugTrailing,
   looksLikeInteractiveAuthPrompt,
   mirrorDebugLines,
   stripAnsi,
   summarizeRawStdout,
 } from './diagnostics.ts';
-import { canonicalizeHarness } from './harnesses/index.ts';
+import { canonicalizeHarness, getHarness } from './harnesses/index.ts';
 import { createHeartbeat } from './heartbeat.ts';
+import { probeMcpServerStartup } from './mcp-startup.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
 import { createCodexNativeProgressProbe } from './native-progress.ts';
 import { type HarnessParser, createParser } from './parsers/index.ts';
@@ -253,18 +255,62 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   if (resolvedSessionId) emit({ type: 'session.started', sessionId: resolvedSessionId });
   emit({ type: 'turn.started' });
 
-  const completed = done
-    .then(({ exitCode, signal, spec: doneSpec }) => {
+  const killChild = (signal?: NodeJS.Signals): void => {
+    if (child.exitCode !== null) return;
+    if (request.detached && child.pid != null) {
+      try {
+        process.kill(-child.pid, signal ?? 'SIGTERM');
+      } catch {}
+    } else {
+      child.kill(signal);
+    }
+  };
+
+  // Runner-enforced required MCP for CLIs that drop a failed server silently
+  // (cursor). Runs alongside the CLI: a failed probe emits the startup error,
+  // kills the turn and forces reason 'error' even if the model already ran —
+  // a Buddy turn must never report success without its state tools.
+  let mcpStartupFailure: string | undefined;
+  const requiredServers = Object.entries(request.mcpServers ?? {}).filter(([, spec]) => spec.required);
+  const mcpStartupProbe: Promise<void> =
+    getHarness(request.harness).probeRequiredMcpStartup && requiredServers.length > 0
+      ? Promise.all(requiredServers.map(([name, spec]) => probeMcpServerStartup(name, spec))).then(
+          () => undefined,
+          (error: unknown) => {
+            mcpStartupFailure = error instanceof Error ? error.message : String(error);
+            emit({ type: 'error', message: mcpStartupFailure });
+            killChild();
+          }
+        )
+      : Promise.resolve();
+
+  const stderrOutOfTokens = (): string | undefined => {
+    const classified = classifyError(stderr.buffer().trim().split('\n').pop() ?? '');
+    return classified.kind === 'out_of_tokens' ? classified.message : undefined;
+  };
+
+  const completed = Promise.all([done, mcpStartupProbe])
+    .then(([{ exitCode, signal, spec: doneSpec }]) => {
       heartbeat.stop();
       stdout.flush();
       stderr.flush();
 
       let finalReason = completionReason;
-      if (!completeEventSeen) {
+      if (mcpStartupFailure) {
+        finalReason = 'error';
+        if (!completeEventSeen) emit({ type: 'turn.complete', reason: 'error' });
+      } else if (!completeEventSeen) {
         if (stopRequested || exitCode === null) {
           finalReason = 'killed';
         } else if (completionReason !== 'success') {
           finalReason = completionReason;
+        } else if (request.mode === 'conversation' && exitCode !== 0 && stderrOutOfTokens()) {
+          // Cursor reports fatal account errors ONLY as a stderr line and exit 1,
+          // no JSON (verified 2026-09-24 with an unknown model id). Run that last
+          // line through the same classifier every JSON error uses, so exhausted
+          // credits stay `out_of_tokens` and the memory-review ladder advances.
+          finalReason = 'out_of_tokens';
+          emit({ type: 'out_of_tokens', message: stderrOutOfTokens()! });
         } else if (request.mode === 'conversation') {
           finalReason = 'error';
           emit({
@@ -313,15 +359,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     stop: (signal?: NodeJS.Signals) => {
       stopRequested = true;
       heartbeat.stop();
-      if (child.exitCode === null) {
-        if (request.detached && child.pid != null) {
-          try {
-            process.kill(-child.pid, signal ?? 'SIGTERM');
-          } catch {}
-        } else {
-          child.kill(signal);
-        }
-      }
+      killChild(signal);
     },
   };
 }

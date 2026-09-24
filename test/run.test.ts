@@ -301,6 +301,14 @@ if (prompt === 'cursor-auth-required') {
   process.exit(1);
 }
 
+// Cursor prints fatal account errors to stderr only and exits 1 (the
+// channel is verified; this exact limit wording is NOT — never observed live).
+if (prompt === 'cursor-usage-limit') {
+  process.stderr.write("cursor-retrieval: tracing to '/tmp/x.log'\\n");
+  process.stderr.write("You've hit your usage limit for this model.\\n");
+  process.exit(1);
+}
+
 if (prompt === 'cursor-success') {
   if (model !== 'composer-2.5') {
     process.stderr.write('unexpected model: ' + model + '\\n');
@@ -312,6 +320,9 @@ if (prompt === 'cursor-success') {
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'tool_call', subtype: 'started', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' } } }, session_id: 'cursor-session-1' });
   emit({ type: 'tool_call', subtype: 'completed', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' }, result: { success: { files: ['a.ts'], totalFiles: 1 } } } }, session_id: 'cursor-session-1' });
+  // Shape captured from agent 2026.08.11 calling a server injected via --plugin-dir.
+  emit({ type: 'tool_call', subtype: 'started', call_id: 'tool_2', tool_call: { mcpToolCall: { args: { name: 'plugin-agent-cli-unleashd_buddy-get_inbox', args: { limit: 1 }, providerIdentifier: 'plugin-agent-cli-unleashd_buddy', toolName: 'get_inbox' } } }, session_id: 'cursor-session-1' });
+  emit({ type: 'tool_call', subtype: 'completed', call_id: 'tool_2', tool_call: { mcpToolCall: { result: { rejected: { reason: 'User rejected MCP: plugin-agent-cli-unleashd_buddy-get_inbox' } } } }, session_id: 'cursor-session-1' });
   emit({ type: 'result', subtype: 'success', is_error: false, result: 'hi from cursor', session_id: 'cursor-session-1' });
   process.exit(0);
 }
@@ -797,10 +808,89 @@ describe('executeCommand contract', { concurrency: true }, () => {
       .join('');
     assert.strictEqual(text, 'hi from cursor');
 
+    // Canonical MCP naming is what the memory reviewer's tool guard and the
+    // Buddy tool UI key on; Cursor's plugin prefix must never leak through.
+    const tools = events.flatMap((event) =>
+      event.type === 'tool.use' ? [[event.name, event.input]] : []
+    );
+    assert.deepStrictEqual(tools, [
+      ['glob', { targetDirectory: '/tmp', globPattern: '*.ts' }],
+      ['mcp__unleashd_buddy__get_inbox', { limit: 1 }],
+    ]);
+    const results = events.flatMap((event) => (event.type === 'tool.result' ? [event.isError] : []));
+    assert.deepStrictEqual(results, [false, true]);
+
     const errors = events.filter(
       (event): event is Extract<UnifiedAgentEvent, { type: 'error' }> => event.type === 'error'
     );
     assert.strictEqual(errors.length, 0);
+  });
+
+  // Cursor drops a dead MCP server silently and the turn "succeeds" (verified
+  // live 2026-09-24). The runner's startup probe is the only thing standing
+  // between that and a Buddy turn that reports success without its state tools.
+  it('fails a cursor turn whose required MCP server cannot start', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-success',
+      cwd: workspace,
+      model: 'composer-2.5',
+      yolo: true,
+      mcpServers: { unleashd_dead: { command: '/nonexistent-probe-binary', args: [], required: true } },
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'error');
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === 'error' && /MCP server `unleashd_dead` failed during startup/.test(event.message)
+      )
+    );
+  });
+
+  it('admits a cursor turn whose required MCP server lists its tools', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-success',
+      cwd: workspace,
+      model: 'composer-2.5',
+      yolo: true,
+      mcpServers: {
+        unleashd_echo: {
+          command: process.execPath,
+          args: [path.join(import.meta.dirname, 'fixtures', 'muse-mcp-echo.mjs')],
+          required: true,
+        },
+      },
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    await eventsPromise;
+
+    assert.strictEqual(completion.reason, 'success');
+    const pluginDir = turn.spec.argv[turn.spec.argv.indexOf('--plugin-dir') + 1];
+    const config = JSON.parse(readFileSync(path.join(pluginDir, '.mcp.json'), 'utf-8'));
+    assert.deepStrictEqual(Object.keys(config.mcpServers), ['unleashd_echo']);
+  });
+
+  it('classifies a stderr-only cursor usage-limit exit as out_of_tokens', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-usage-limit',
+      cwd: workspace,
+      model: 'composer-2.5',
+      yolo: true,
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    await eventsPromise;
+    assert.strictEqual(completion.reason, 'out_of_tokens');
   });
 
   it('resumes cursor with the captured real session id', async () => {

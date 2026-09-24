@@ -1,3 +1,4 @@
+import { CURSOR_MCP_PROVIDER_PREFIX } from '../cursor-mcp-plugin.ts';
 import { failureEvents } from '../diagnostics.ts';
 import { asObject, asString, normalizeType } from '../json-utils.ts';
 import type { UnifiedAgentEvent } from '../runtime-types.ts';
@@ -33,6 +34,58 @@ function resultEvents(obj: Record<string, unknown>): UnifiedAgentEvent[] {
       asString(obj.message) ??
       `Cursor result failed: ${String(obj.subtype ?? obj.status ?? obj.reason ?? 'unknown')}`
   );
+}
+
+/**
+ * Current `agent` stream shape (2026.08.11): one `tool_call` record per phase,
+ * `{ subtype: 'started' | 'completed', tool_call: { <kind>ToolCall: { args, result? } } }`
+ * with exactly one `<kind>ToolCall` key (`shellToolCall`, `readToolCall`,
+ * `mcpToolCall`, `getMcpToolsToolCall`, ...). `started` becomes tool.use,
+ * `completed` becomes tool.result. MCP calls are renamed to the canonical
+ * `mcp__<server>__<tool>` every other harness emits, stripping the plugin
+ * prefix our own MCP injection adds (cursor-mcp-plugin.ts) so callers never
+ * see Cursor's plugin naming.
+ *
+ * These were dropped wholesale before 2026-09-24, which left Cursor turns
+ * with no visible tool activity and the memory reviewer's non-memory-tool
+ * guard blind.
+ */
+function toolCallEvents(obj: Record<string, unknown>): UnifiedAgentEvent[] {
+  const call = asObject(obj.tool_call);
+  const [key, value] = Object.entries(call ?? {}).find(([name]) => name.endsWith('ToolCall')) ?? [];
+  if (!key) return [];
+  const body = asObject(value) ?? {};
+  const args = asObject(body.args) ?? {};
+  switch (normalizeType(asString(obj.subtype))) {
+    case 'started':
+      return [{ type: 'tool.use', name: toolName(key, args), input: toolInput(key, args) }];
+    case 'completed': {
+      const result = asObject(body.result) ?? {};
+      const success = result.success;
+      return [
+        {
+          type: 'tool.result',
+          output: success ?? result,
+          isError: success === undefined,
+        },
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
+function toolName(key: string, args: Record<string, unknown>): string {
+  if (key !== 'mcpToolCall') return key.slice(0, -'ToolCall'.length);
+  const provider = asString(args.providerIdentifier) ?? 'mcp';
+  const server = provider.startsWith(CURSOR_MCP_PROVIDER_PREFIX)
+    ? provider.slice(CURSOR_MCP_PROVIDER_PREFIX.length)
+    : provider;
+  return `mcp__${server}__${asString(args.toolName) ?? 'tool'}`;
+}
+
+function toolInput(key: string, args: Record<string, unknown>): Record<string, unknown> {
+  return key === 'mcpToolCall' ? (asObject(args.args) ?? {}) : args;
 }
 
 export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
@@ -145,7 +198,7 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
       return resultEvents(obj);
     }
 
-    if (type === 'tool_call') return [];
+    if (type === 'tool_call') return toolCallEvents(obj);
     return [
       {
         type: 'error',

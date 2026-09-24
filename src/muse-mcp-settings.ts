@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { forwardedMcpEnv } from './mcp-env.ts';
 import type { McpServerSpec } from './types.ts';
 
 /**
@@ -94,9 +95,7 @@ export function buildMuseMcpConfigDir(
   // The CLI gives MCP servers exactly the env declared here (no parent
   // inheritance observed), so parent-scoped store selection must be
   // forwarded explicitly or the child silently opens the default store.
-  const forwardedEnv: Record<string, string> = {};
-  const buddiesHome = process.env.BUDDIES_HOME?.trim();
-  if (buddiesHome) forwardedEnv['BUDDIES_HOME'] = buddiesHome;
+  const forwardedEnv = forwardedMcpEnv();
   for (const [name, spec] of Object.entries(servers)) {
     const encoded = {
       transport: 'stdio',

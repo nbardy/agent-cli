@@ -134,6 +134,13 @@ export interface HarnessConfig {
    * globally-configured MCP servers.
    */
   readonly mcpCapability: McpCapability;
+  /**
+   * Set when the CLI drops a failed MCP server SILENTLY (cursor). The runner
+   * then earns `required` itself: it probes every required server's startup
+   * alongside the CLI and fails the turn if a probe fails (mcp-startup.ts).
+   * Absent where the CLI enforces required servers natively (codex, muse).
+   */
+  readonly probeRequiredMcpStartup?: true;
   readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
 
   /** Flag name for model selection (e.g. '--model' or '-m') */

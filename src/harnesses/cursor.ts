@@ -1,3 +1,4 @@
+import { buildCursorMcpPluginDir } from '../cursor-mcp-plugin.ts';
 import type { HarnessConfig } from '../types.ts';
 
 /**
@@ -16,13 +17,21 @@ import type { HarnessConfig } from '../types.ts';
  * workspace-policy flags passed via extraArgs when needed, not baseCmd.
  * Fallback to `cursor-agent` is handled in resolveBinary/process-runner.
  *
+ * Model and effort: Cursor encodes effort IN the model id (`grok-4.7-low`),
+ * so there is no reasoningFlags — execute.ts never forwards reasoningEffort.
+ *
  * No sessionForkFlags / emulateFork: Cursor absent from FORK_CAPABLE_PROVIDERS.
- * No `mcp` encoder either: the current `agent --help` surface documents no
- * MCP flag or per-process config environment. Absence is deliberate and
- * reported through `harnessSupportsMcp('cursor')`.
+ *
+ * MCP: a per-process local plugin (`--plugin-dir`, see cursor-mcp-plugin.ts)
+ * plus `--approve-mcps`. The CLI has no required-server knob and silently
+ * drops a server that fails to start, so `required` is earned by the runner's
+ * startup probe (`probeRequiredMcpStartup`). Tool calls still need `--force`
+ * to execute in print mode; callers that must not grant shell/write pair it
+ * with `--mode ask` (read-only).
  */
 export const cursorConfig: HarnessConfig = {
-  mcpCapability: 'none',
+  mcpCapability: 'required',
+  probeRequiredMcpStartup: true,
   binary: 'agent',
   baseCmd: ['--print', '--output-format', 'stream-json', '--stream-partial-output'],
   bypassFlags: ['--force'],
@@ -32,4 +41,8 @@ export const cursorConfig: HarnessConfig = {
   stdout: 'jsonl',
 
   sessionResumeFlags: (id) => ['--resume', id],
+
+  mcp: (servers) => ({
+    args: ['--plugin-dir', buildCursorMcpPluginDir(servers), '--approve-mcps'],
+  }),
 };

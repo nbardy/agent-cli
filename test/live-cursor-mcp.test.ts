@@ -25,7 +25,7 @@ describe('live cursor required MCP', { skip: !enabled }, () => {
       cwd: workspace,
       model,
       yolo: true,
-      extraArgs: ['--trust', '--mode', 'ask'],
+      extraArgs: ['--mode', 'ask'],
       mcpServers: {
         unleashd_echo: {
           command: process.execPath,

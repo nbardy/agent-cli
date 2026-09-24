@@ -316,6 +316,8 @@ if (prompt === 'cursor-success') {
   }
   emit({ type: 'system', subtype: 'init', session_id: 'cursor-session-1', model: 'Composer 2.5', permissionMode: 'default' });
   emit({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'cursor-success' }] }, session_id: 'cursor-session-1' });
+  emit({ type: 'thinking', subtype: 'delta', text: 'Planning the reply', session_id: 'cursor-session-1', timestamp_ms: 1 });
+  emit({ type: 'thinking', subtype: 'completed', session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'tool_call', subtype: 'started', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' } } }, session_id: 'cursor-session-1' });

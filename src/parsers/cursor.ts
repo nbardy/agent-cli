@@ -199,6 +199,18 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (type === 'tool_call') return toolCallEvents(obj);
+    // Reasoning models (grok-4.7, 2026-09-24) stream `thinking` delta/completed
+    // records. They used to fall through to "unrecognized event type" errors,
+    // which failed every such turn and the memory reviewer on its first step.
+    if (type === 'thinking') {
+      return [
+        {
+          type: 'progress',
+          source: 'cursor.thinking',
+          data: { subtype: normalizeType(asString(obj.subtype)) ?? 'unknown' },
+        },
+      ];
+    }
     return [
       {
         type: 'error',

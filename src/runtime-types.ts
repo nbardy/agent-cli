@@ -62,7 +62,7 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   cwd: string;
   model?: string;
   extraArgs?: readonly string[];
-  /** Canonical stdio MCP servers; the selected harness owns provider-specific encoding. */
+  /** Canonical MCP servers (stdio or http); the selected harness owns provider-specific encoding. */
   mcpServers?: Readonly<Record<string, McpServerSpec>>;
   sessionId?: string;
   resumeSessionId?: string;

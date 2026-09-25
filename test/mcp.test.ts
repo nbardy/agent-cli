@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it } from 'node:test';
-import { buildCommand, harnessMcpCapability, harnessSupportsMcp } from '../src/index.ts';
+import { after, describe, it } from 'node:test';
+import {
+  type BuildOptions,
+  buildCommand,
+  harnessMcpCapability,
+  harnessSupportsMcp,
+} from '../src/index.ts';
 import { createMuseParser } from '../src/parsers/muse.ts';
 
 const buddyServer = {
   unleashd_buddy: {
+    kind: 'stdio',
     command: '/usr/bin/node',
     args: [
       '--import',
@@ -34,7 +40,20 @@ const optionalBuddyServerWithoutEnv = {
   },
 } as const;
 
+// Muse settings dirs are owned by the run (runCommand deletes them); these
+// tests only build, so they delete what they created.
+const createdMusePaths: string[] = [];
+function buildMuse(options: BuildOptions) {
+  const spec = buildCommand('muse', options);
+  createdMusePaths.push(...spec.ownedPaths);
+  return spec;
+}
+
 describe('MCP encoding', () => {
+  after(() => {
+    for (const path of createdMusePaths) rmSync(path, { recursive: true, force: true });
+  });
+
   it('pins the additive Codex TOML argv byte-for-byte', () => {
     const spec = buildCommand('codex', {
       prompt: 'work',
@@ -157,14 +176,14 @@ describe('MCP encoding', () => {
         schema_version: 1,
         model: 'user-default-model',
         mcp_servers: {
-          user_tool: { transport: 'stdio', command: 'user-bin', args: [] },
+          user_tool: { type: 'stdio', command: 'user-bin', args: [] },
         },
       })
     );
     const savedXdg = process.env.XDG_CONFIG_HOME;
     try {
       process.env.XDG_CONFIG_HOME = fixtureBase;
-      const spec = buildCommand('muse', {
+      const spec = buildMuse({
         prompt: 'work',
         mcpServers: buddyServer,
       });
@@ -180,19 +199,23 @@ describe('MCP encoding', () => {
       ) as {
         schema_version: number;
         model: string;
-        mcp_servers: Record<string, Record<string, unknown>>;
+        mcpServers: Record<string, Record<string, unknown>>;
       };
       assert.strictEqual(merged.schema_version, 1);
+      // Regression B5: muse 1.4.0 drops the WHOLE MCP member when the legacy
+      // `mcp_servers` key sits next to `mcpServers`, so a legacy user block
+      // must be folded into `mcpServers`, never written back.
+      assert.ok(!('mcp_servers' in merged));
       // User settings survive the merge untouched.
       assert.strictEqual(merged.model, 'user-default-model');
-      assert.deepStrictEqual(merged.mcp_servers['user_tool'], {
-        transport: 'stdio',
+      assert.deepStrictEqual(merged.mcpServers['user_tool'], {
+        type: 'stdio',
         command: 'user-bin',
         args: [],
       });
       // Required servers land with explicit fail-closed mode.
-      assert.deepStrictEqual(merged.mcp_servers['unleashd_buddy'], {
-        transport: 'stdio',
+      assert.deepStrictEqual(merged.mcpServers['unleashd_buddy'], {
+        type: 'stdio',
         command: '/usr/bin/node',
         args: [
           '--import',
@@ -216,14 +239,14 @@ describe('MCP encoding', () => {
     const savedXdg = process.env.XDG_CONFIG_HOME;
     try {
       process.env.XDG_CONFIG_HOME = fixtureBase;
-      const spec = buildCommand('muse', {
+      const spec = buildMuse({
         prompt: 'work',
         mcpServers: optionalBuddyServer,
       });
       const merged = JSON.parse(
         readFileSync(join(spec.env?.XDG_CONFIG_HOME ?? '', 'muse', 'settings.json'), 'utf-8')
-      ) as { mcp_servers: Record<string, Record<string, unknown>> };
-      assert.strictEqual(merged.mcp_servers['unleashd_buddy']?.['mode'], 'optional');
+      ) as { mcpServers: Record<string, Record<string, unknown>> };
+      assert.strictEqual(merged.mcpServers['unleashd_buddy']?.['mode'], 'optional');
     } finally {
       if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = savedXdg;
@@ -237,14 +260,14 @@ describe('MCP encoding', () => {
     try {
       process.env.XDG_CONFIG_HOME = fixtureBase;
       process.env.BUDDIES_HOME = '/tmp/parent-scoped-store';
-      const spec = buildCommand('muse', {
+      const spec = buildMuse({
         prompt: 'work',
         mcpServers: optionalBuddyServerWithoutEnv,
       });
       const merged = JSON.parse(
         readFileSync(join(spec.env?.XDG_CONFIG_HOME ?? '', 'muse', 'settings.json'), 'utf-8')
-      ) as { mcp_servers: Record<string, Record<string, unknown>> };
-      assert.deepStrictEqual(merged.mcp_servers['unleashd_buddy']?.['env'], {
+      ) as { mcpServers: Record<string, Record<string, unknown>> };
+      assert.deepStrictEqual(merged.mcpServers['unleashd_buddy']?.['env'], {
         BUDDIES_HOME: '/tmp/parent-scoped-store',
       });
     } finally {
@@ -262,7 +285,7 @@ describe('MCP encoding', () => {
       join(fixtureBase, 'muse', 'settings.json'),
       JSON.stringify({
         schema_version: 1,
-        mcp_servers: { unleashd_buddy: { transport: 'stdio', command: 'user-bin', args: [] } },
+        mcpServers: { unleashd_buddy: { type: 'stdio', command: 'user-bin', args: [] } },
       })
     );
     const savedXdg = process.env.XDG_CONFIG_HOME;

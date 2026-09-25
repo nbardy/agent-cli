@@ -1,4 +1,4 @@
-import { buildCursorMcpPluginDir } from '../cursor-mcp-plugin.ts';
+import { buildCursorMcpPlugin } from '../cursor-mcp-plugin.ts';
 import type { HarnessConfig } from '../types.ts';
 
 /**
@@ -25,7 +25,8 @@ import type { HarnessConfig } from '../types.ts';
  * MCP: a per-process local plugin (`--plugin-dir`, see cursor-mcp-plugin.ts)
  * plus `--approve-mcps`. The CLI has no required-server knob and silently
  * drops a server that fails to start, so `required` is earned by the runner's
- * startup probe (`probeRequiredMcpStartup`). Tool calls still need `--force`
+ * startup probe (`probeRequiredMcpStartup`). HTTP servers are `{url, headers}`
+ * with `${env:VAR}` header references (cursor-mcp-plugin.ts). Tool calls still need `--force`
  * to execute in print mode; callers that must not grant shell/write pair it
  * with `--mode ask` (read-only).
  */
@@ -42,7 +43,8 @@ export const cursorConfig: HarnessConfig = {
 
   sessionResumeFlags: (id) => ['--resume', id],
 
-  mcp: (servers) => ({
-    args: ['--plugin-dir', buildCursorMcpPluginDir(servers), '--approve-mcps'],
-  }),
+  mcp: (servers) => {
+    const plugin = buildCursorMcpPlugin(servers);
+    return { args: ['--plugin-dir', plugin.dir, '--approve-mcps'], env: plugin.env, ownedPaths: [] };
+  },
 };

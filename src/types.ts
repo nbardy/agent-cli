@@ -59,13 +59,17 @@ export type StdoutBehavior = 'jsonl' | 'text' | 'ignore';
 // =============================================================================
 
 /**
- * Canonical, provider-agnostic description of one stdio MCP server.
- *
- * Callers describe WHAT to launch; each HarnessConfig.mcp encoder owns HOW that
- * gets expressed on its CLI (TOML `-c` fragments, a JSON flag, an env var, ...).
- * No caller should ever encode per-CLI MCP syntax itself.
+ * Canonical, provider-agnostic description of one MCP server: a sum over its
+ * transport. Callers describe WHAT to connect to; each HarnessConfig.mcp
+ * encoder owns HOW that gets expressed on its CLI (TOML `-c` fragments, a JSON
+ * flag, an env var, a settings file, ...). No caller should ever encode
+ * per-CLI MCP syntax itself.
  */
-export interface McpServerSpec {
+export type McpServerSpec = McpStdioServer | McpHttpServer;
+
+/** A server the CLI launches as a child process and talks to over stdio. */
+export interface McpStdioServer {
+  readonly kind: 'stdio';
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd?: string;
@@ -76,6 +80,24 @@ export interface McpServerSpec {
    */
   readonly env?: Readonly<Record<string, string>>;
   /** Fail the turn if the server cannot start, rather than running without it. */
+  readonly required?: boolean;
+}
+
+/**
+ * A streamable-HTTP server the CLI connects to (MCP 2025-03-26 transport).
+ *
+ * `headers` carry credentials (typically `Authorization: Bearer <per-turn
+ * token>`). Encoders keep header VALUES out of argv wherever the CLI can
+ * expand them from its environment (claude `${VAR}`, codex `env_http_headers`,
+ * cursor `${env:VAR}`); muse cannot, so its values land in a 0600 settings
+ * file that the runner deletes when the process exits (see
+ * muse-mcp-settings.ts).
+ */
+export interface McpHttpServer {
+  readonly kind: 'http';
+  readonly url: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  /** Fail the turn if the server is unreachable, rather than running without it. */
   readonly required?: boolean;
 }
 
@@ -91,12 +113,17 @@ export type McpCapability = 'none' | 'inject' | 'required';
 
 /**
  * The result of encoding MCP servers for one harness: extra argv entries,
- * extra process env, or both. A harness may need only one of the two
- * (opencode is env-only; claude and codex are args-only).
+ * extra process env, and temp paths the run owns. A harness may need only one
+ * of the first two (opencode is env-only; codex stdio is args-only).
+ *
+ * `ownedPaths` are files/dirs written for THIS process only (muse's merged
+ * settings dir, which may hold a per-turn bearer token). runCommand deletes
+ * them when the child closes.
  */
 export interface McpEncoding {
-  readonly args?: readonly string[];
-  readonly env?: Readonly<Record<string, string>>;
+  readonly args: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+  readonly ownedPaths: readonly string[];
 }
 
 // =============================================================================
@@ -139,6 +166,11 @@ export interface HarnessConfig {
    * then earns `required` itself: it probes every required server's startup
    * alongside the CLI and fails the turn if a probe fails (mcp-startup.ts).
    * Absent where the CLI enforces required servers natively (codex, muse).
+   *
+   * Applies to stdio servers only. Required HTTP servers are probed for every
+   * harness (a POST, not a spawn): claude also drops a failed HTTP server
+   * silently (status "failed" in its init event, verified 2026-09-25), and a
+   * dead URL must fail the turn before the model runs anywhere.
    */
   readonly probeRequiredMcpStartup?: true;
   readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
@@ -325,4 +357,11 @@ export interface CommandSpec {
    * environment — never use them as a replacement env.
    */
   env?: Readonly<Record<string, string>>;
+
+  /**
+   * Temp files/dirs written for this process only. runCommand deletes them
+   * when the child closes; a caller that spawns `argv` itself owns deleting
+   * them.
+   */
+  ownedPaths: readonly string[];
 }

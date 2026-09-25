@@ -29,6 +29,8 @@ export type {
   StdinBehavior,
   StdoutBehavior,
   McpServerSpec,
+  McpStdioServer,
+  McpHttpServer,
   McpEncoding,
   McpCapability,
 } from './types.ts';
@@ -61,5 +63,6 @@ export {
   registry,
 } from './harnesses/index.ts';
 export { buildMuseMcpConfigDir, museConfigRoot } from './muse-mcp-settings.ts';
+export { probeMcpServerStartup } from './mcp-startup.ts';
 export type { MuseMcpConfigDir } from './muse-mcp-settings.ts';
 export { resolveBinary } from './resolve.ts';

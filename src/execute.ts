@@ -9,7 +9,7 @@ import {
 } from './diagnostics.ts';
 import { canonicalizeHarness, getHarness } from './harnesses/index.ts';
 import { createHeartbeat } from './heartbeat.ts';
-import { probeMcpServerStartup } from './mcp-startup.ts';
+import { probeMcpServerStartup, requiresStartupProbe } from './mcp-startup.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
 import { createCodexNativeProgressProbe } from './native-progress.ts';
 import { type HarnessParser, createParser } from './parsers/index.ts';
@@ -266,14 +266,18 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     }
   };
 
-  // Runner-enforced required MCP for CLIs that drop a failed server silently
-  // (cursor). Runs alongside the CLI: a failed probe emits the startup error,
-  // kills the turn and forces reason 'error' even if the model already ran —
-  // a Buddy turn must never report success without its state tools.
+  // Runner-enforced required MCP where the CLI would drop a failed server
+  // silently (cursor stdio; every harness for HTTP — see requiresStartupProbe).
+  // Runs alongside the CLI: a failed probe emits the startup error, kills the
+  // turn and forces reason 'error' even if the model already ran — a Buddy
+  // turn must never report success without its state tools.
   let mcpStartupFailure: string | undefined;
-  const requiredServers = Object.entries(request.mcpServers ?? {}).filter(([, spec]) => spec.required);
+  const harnessConfig = getHarness(request.harness);
+  const requiredServers = Object.entries(request.mcpServers ?? {}).filter(
+    ([, spec]) => spec.required && requiresStartupProbe(harnessConfig, spec)
+  );
   const mcpStartupProbe: Promise<void> =
-    getHarness(request.harness).probeRequiredMcpStartup && requiredServers.length > 0
+    requiredServers.length > 0
       ? Promise.all(requiredServers.map(([name, spec]) => probeMcpServerStartup(name, spec))).then(
           () => undefined,
           (error: unknown) => {

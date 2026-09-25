@@ -839,7 +839,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       cwd: workspace,
       model: 'composer-2.5',
       yolo: true,
-      mcpServers: { unleashd_dead: { command: '/nonexistent-probe-binary', args: [], required: true } },
+      mcpServers: { unleashd_dead: { kind: 'stdio', command: '/nonexistent-probe-binary', args: [], required: true } },
     });
     const eventsPromise = collectEvents(turn.events);
     const completion = await turn.completed;
@@ -864,6 +864,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       yolo: true,
       mcpServers: {
         unleashd_echo: {
+          kind: 'stdio',
           command: process.execPath,
           args: [path.join(import.meta.dirname, 'fixtures', 'muse-mcp-echo.mjs')],
           required: true,

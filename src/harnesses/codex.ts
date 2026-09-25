@@ -1,4 +1,5 @@
 import { emulateForkCodex } from '../fork-emulation.ts';
+import { type McpKindEncoders, encodeMcpServers, headersViaEnv } from '../mcp-encoding.ts';
 import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
@@ -14,26 +15,57 @@ function tomlStringArray(values: readonly string[]): string {
   return `[${values.map(tomlString).join(',')}]`;
 }
 
+/** TOML inline table of string values; keys quoted with the same JSON rule. */
+function tomlInlineTable(entries: Readonly<Record<string, string>>): string {
+  return `{${Object.entries(entries)
+    .map(([key, value]) => `${tomlString(key)}=${tomlString(value)}`)
+    .join(',')}}`;
+}
+
+const codexMcpEncoders: McpKindEncoders<readonly string[]> = {
+  stdio: (name, spec) => {
+    const env = spec.env ?? {};
+    const args = [
+      '-c',
+      `mcp_servers.${name}.command=${tomlString(spec.command)}`,
+      '-c',
+      `mcp_servers.${name}.args=${tomlStringArray(spec.args)}`,
+      '-c',
+      `mcp_servers.${name}.enabled=true`,
+      ...(spec.required ? ['-c', `mcp_servers.${name}.required=true`] : []),
+      ...(spec.cwd ? ['-c', `mcp_servers.${name}.cwd=${tomlString(spec.cwd)}`] : []),
+      ...(Object.keys(env).length > 0
+        ? ['-c', `mcp_servers.${name}.env_vars=${tomlStringArray(Object.keys(env))}`]
+        : []),
+    ];
+    return { entry: args, env };
+  },
+  // A `url` makes the server `streamable_http`. Codex rejects an inline
+  // `bearer_token`; `env_http_headers` maps header → env var name and covers
+  // Authorization as well as any other header, so every value rides the
+  // process env. Verified 2026-09-25 against codex-cli 0.156.1: `codex mcp
+  // get -c …` reports transport streamable_http with these env_http_headers,
+  // an exec against a local server delivered `Authorization: Bearer <value>`,
+  // and a 401 with required=true aborted the session before any model call.
+  http: (name, spec) => {
+    const headers = headersViaEnv(name, spec.headers ?? {}, (envName) => envName);
+    const args = [
+      '-c',
+      `mcp_servers.${name}.url=${tomlString(spec.url)}`,
+      '-c',
+      `mcp_servers.${name}.enabled=true`,
+      ...(spec.required ? ['-c', `mcp_servers.${name}.required=true`] : []),
+      ...(Object.keys(headers.headers).length > 0
+        ? ['-c', `mcp_servers.${name}.env_http_headers=${tomlInlineTable(headers.headers)}`]
+        : []),
+    ];
+    return { entry: args, env: headers.env };
+  },
+};
+
 function codexMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
-  const args: string[] = [];
-  const env: Record<string, string> = {};
-  for (const [name, spec] of Object.entries(servers)) {
-    args.push('-c', `mcp_servers.${name}.command=${tomlString(spec.command)}`);
-    args.push('-c', `mcp_servers.${name}.args=${tomlStringArray(spec.args)}`);
-    args.push('-c', `mcp_servers.${name}.enabled=true`);
-    if (spec.required) args.push('-c', `mcp_servers.${name}.required=true`);
-    if (spec.cwd) args.push('-c', `mcp_servers.${name}.cwd=${tomlString(spec.cwd)}`);
-    if (spec.env && Object.keys(spec.env).length > 0) {
-      args.push('-c', `mcp_servers.${name}.env_vars=${tomlStringArray(Object.keys(spec.env))}`);
-      for (const [key, value] of Object.entries(spec.env)) {
-        if (key in env && env[key] !== value) {
-          throw new Error(`MCP servers require conflicting values for environment variable ${key}`);
-        }
-        env[key] = value;
-      }
-    }
-  }
-  return { args, ...(Object.keys(env).length > 0 ? { env } : {}) };
+  const { entries, env } = encodeMcpServers(codexMcpEncoders, servers);
+  return { args: entries.flatMap(([, args]) => args), env, ownedPaths: [] };
 }
 
 /**

@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { buildCommand } from './build.ts';
 import { resolveBinary } from './resolve.ts';
@@ -63,9 +64,21 @@ export function runCommand(
   }
   if (options.onStderr && child.stderr) child.stderr.on('data', options.onStderr);
 
+  // Temp config the harness wrote for this process only (muse's settings dir
+  // may hold a literal per-turn bearer token). Delete it once the child is
+  // gone, on every exit path.
+  const removeOwnedPaths = (): void => {
+    for (const path of spec.ownedPaths) rmSync(path, { recursive: true, force: true });
+  };
   const done = new Promise<RunResult>((resolve, reject) => {
-    child.on('close', (code, signal) => resolve({ exitCode: code, signal, spec }));
-    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      removeOwnedPaths();
+      resolve({ exitCode: code, signal, spec });
+    });
+    child.on('error', (error) => {
+      removeOwnedPaths();
+      reject(error);
+    });
   });
 
   return { child, spec, done };

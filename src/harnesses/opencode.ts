@@ -1,3 +1,4 @@
+import { type McpKindEncoders, encodeMcpServers } from '../mcp-encoding.ts';
 import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
@@ -37,18 +38,35 @@ import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
  * Caveat: this OVERWRITES any OPENCODE_CONFIG_CONTENT already in the
  * environment. Nothing in this repo sets it; a caller that does would lose it.
  */
-function opencodeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
-  const mcp: Record<string, unknown> = {};
-  for (const [name, spec] of Object.entries(servers)) {
-    mcp[name] = {
+const opencodeMcpEncoders: McpKindEncoders<Record<string, unknown>> = {
+  stdio: (_name, spec) => ({
+    entry: {
       type: 'local',
       command: [spec.command, ...spec.args],
       enabled: true,
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
       ...(spec.env ? { environment: spec.env } : {}),
-    };
-  }
-  return { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }) } };
+    },
+    env: {},
+  }),
+  // `type:'remote'` with literal headers. The whole config already travels in
+  // the process env, so literal values stay out of argv and off disk.
+  // Verified 2026-09-25 against opencode 1.18.18: `opencode mcp list` with this
+  // OPENCODE_CONFIG_CONTENT reported the local streamable-HTTP server
+  // connected, and the server saw the Authorization header.
+  http: (_name, spec) => ({
+    entry: { type: 'remote', url: spec.url, enabled: true, headers: { ...spec.headers } },
+    env: {},
+  }),
+};
+
+function opencodeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
+  const { entries } = encodeMcpServers(opencodeMcpEncoders, servers);
+  return {
+    args: [],
+    env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp: Object.fromEntries(entries) }) },
+    ownedPaths: [],
+  };
 }
 
 export const opencodeConfig: HarnessConfig = {

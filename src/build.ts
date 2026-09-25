@@ -7,6 +7,8 @@ import type {
   McpEncoding,
 } from './types.ts';
 
+const NO_MCP: McpEncoding = { args: [], env: {}, ownedPaths: [] };
+
 /**
  * Build a CLI command from harness name + options.
  *
@@ -119,7 +121,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
   // MCP encoding belongs to the harness because some CLIs take argv while
   // others (notably OpenCode) take process environment. Keep it immediately
   // before prompt delivery so positional prompts remain last.
-  let mcpEncoding: McpEncoding | undefined;
+  let mcpEncoding: McpEncoding = NO_MCP;
   if (options.mcpServers && Object.keys(options.mcpServers).length > 0) {
     const requiredServers = Object.entries(options.mcpServers)
       .filter(([, spec]) => spec.required)
@@ -139,9 +141,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
       }
     }
   }
-  if (mcpEncoding?.args && mcpEncoding.args.length > 0) {
-    argv.push(...mcpEncoding.args);
-  }
+  argv.push(...mcpEncoding.args);
 
   // Prompt delivery
   //
@@ -171,8 +171,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
     stdin: config.stdin,
     stdout: config.stdout,
     prompt: options.prompt,
-    ...(mcpEncoding?.env && Object.keys(mcpEncoding.env).length > 0
-      ? { env: mcpEncoding.env }
-      : {}),
+    ...(Object.keys(mcpEncoding.env).length > 0 ? { env: mcpEncoding.env } : {}),
+    ownedPaths: mcpEncoding.ownedPaths,
   };
 }

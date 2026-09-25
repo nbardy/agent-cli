@@ -58,6 +58,7 @@ describe('live muse required MCP', { skip: !liveMuseMcpEnabled }, () => {
       yolo: true,
       mcpServers: {
         unleashd_dead: {
+          kind: 'stdio',
           command: '/nonexistent-live-probe-binary',
           args: [],
           required: true,
@@ -94,6 +95,7 @@ describe('live muse required MCP', { skip: !liveMuseMcpEnabled }, () => {
       yolo: true,
       mcpServers: {
         unleashd_echo: {
+          kind: 'stdio',
           command: process.execPath,
           args: [join(fixtureDir, 'muse-mcp-echo.mjs')],
           env: { MUSE_MCP_ECHO_LOG: logPath },

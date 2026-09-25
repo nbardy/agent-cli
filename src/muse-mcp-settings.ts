@@ -1,15 +1,16 @@
-import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
+  mkdtempSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { type McpKindEncoders, encodeMcpServers } from './mcp-encoding.ts';
 import { forwardedMcpEnv } from './mcp-env.ts';
 import type { McpServerSpec } from './types.ts';
 
@@ -17,22 +18,32 @@ import type { McpServerSpec } from './types.ts';
  * Muse MCP injection through a merged settings file.
  *
  * The muse CLI takes no MCP argv (unlike claude/codex) and no MCP env
- * (unlike opencode). Its only MCP surface is the `mcp_servers` block of the
+ * (unlike opencode). Its only MCP surface is the `mcpServers` block of the
  * user settings file (`$XDG_CONFIG_HOME/muse/settings.json`, else
  * `~/.config/muse/settings.json`). This module is the harness-owned HOW for
  * that surface: merge canonical server specs into a copy of the user's
  * settings and point the child at it via XDG_CONFIG_HOME.
  *
- * Fail-closed preserved: entries are written with explicit `mode`
- * (`required` when the spec demands it, `optional` otherwise) and the CLI
- * aborts the whole run when a required server fails startup. Verified
- * empirically against the installed binary: a nonexistent required command
- * ends the run with `run.terminal.failed` before any model step.
+ * Key: `mcpServers` (camelCase) with `type:"stdio"` / `type:"streamable-http"`
+ * entries. Muse 1.4.0 documents this shape (its bundled migrate skill) and
+ * DROPS THE WHOLE MCP MEMBER when both `mcpServers` and the legacy
+ * `mcp_servers` are present. A legacy user block is therefore folded into
+ * `mcpServers` and the legacy key is never written. (Bug B5: this encoder used
+ * to write `mcp_servers` + `transport`.)
  *
- * Residue tradeoff: server args embed per-conversation ids, so the merged
- * dir is content-addressed (same content rewrites the same dir, concurrent
- * turns never share a path). Distinct server sets accumulate ~1KB dirs under
- * os.tmpdir(); they hold secrets (control tokens) with 0600/0700 modes.
+ * Fail-closed preserved: entries carry an explicit `mode` (`required` when the
+ * spec demands it, `optional` otherwise). Never also write `required`; muse
+ * treats the pair as an ambiguous alias and drops the member. The CLI aborts
+ * the run when a required server fails startup. Verified 2026-09-25 against
+ * muse 1.4.0 with `--provider echo` (no model call): a streamable-HTTP entry
+ * with a wrong bearer ended the run with `run.terminal.failed` ("MCP server
+ * `probe` failed during startup: authentication failed"); the right bearer
+ * reached initialize + tools/list.
+ *
+ * Muse does not expand `${VAR}`, so HTTP header values are written LITERALLY.
+ * The dir is therefore per-invocation (mkdtemp; dir 0700, file 0600) and is
+ * returned for `ownedPaths`: runCommand deletes it when the child exits, so a
+ * per-turn token never outlives its run on disk.
  */
 
 export interface MuseMcpConfigDir {
@@ -41,6 +52,39 @@ export interface MuseMcpConfigDir {
   /** Absolute path of the merged settings.json (for tests). */
   readonly settingsPath: string;
 }
+
+type MuseEntry = Record<string, unknown>;
+
+const museMcpEncoders: McpKindEncoders<MuseEntry> = {
+  // The CLI gives MCP servers exactly the env declared here (no parent
+  // inheritance observed), so parent-scoped store selection must be
+  // forwarded explicitly or the child silently opens the default store.
+  // Muse has no stdio `cwd` (its migrate skill drops Codex `cwd`).
+  stdio: (_name, spec) => {
+    const env = { ...forwardedMcpEnv(), ...spec.env };
+    return {
+      entry: {
+        type: 'stdio',
+        command: spec.command,
+        args: [...spec.args],
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+        enabled: true,
+        mode: spec.required ? 'required' : 'optional',
+      },
+      env: {},
+    };
+  },
+  http: (_name, spec) => ({
+    entry: {
+      type: 'streamable-http',
+      url: spec.url,
+      headers: { ...spec.headers },
+      enabled: true,
+      mode: spec.required ? 'required' : 'optional',
+    },
+    env: {},
+  }),
+};
 
 /** Where this process's muse CLI reads user configuration. */
 export function museConfigRoot(): string {
@@ -76,6 +120,29 @@ function readUserSettings(root: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+function objectMember(settings: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = settings[key];
+  if (value === undefined) return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Muse settings member "${key}" must be a JSON object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+/** The user's servers, with a legacy `mcp_servers` block folded into `mcpServers`. */
+function userMcpServers(settings: Record<string, unknown>): Record<string, unknown> {
+  const legacy = objectMember(settings, 'mcp_servers');
+  const current = objectMember(settings, 'mcpServers');
+  for (const name of Object.keys(legacy)) {
+    if (name in current && stableStringify(current[name]) !== stableStringify(legacy[name])) {
+      throw new Error(
+        `Muse settings define "${name}" differently under mcpServers and legacy mcp_servers`
+      );
+    }
+  }
+  return { ...legacy, ...current };
+}
+
 /**
  * Materialize a merged muse config dir for these servers and return the
  * XDG base to spawn with. Synchronous: called from buildCommand, which is
@@ -86,27 +153,8 @@ export function buildMuseMcpConfigDir(
 ): MuseMcpConfigDir {
   const root = museConfigRoot();
   const userSettings = readUserSettings(root);
-  const userServers =
-    typeof userSettings['mcp_servers'] === 'object' && userSettings['mcp_servers'] !== null
-      ? (userSettings['mcp_servers'] as Record<string, unknown>)
-      : {};
-
-  const mergedServers: Record<string, unknown> = { ...userServers };
-  // The CLI gives MCP servers exactly the env declared here (no parent
-  // inheritance observed), so parent-scoped store selection must be
-  // forwarded explicitly or the child silently opens the default store.
-  const forwardedEnv = forwardedMcpEnv();
-  for (const [name, spec] of Object.entries(servers)) {
-    const encoded = {
-      transport: 'stdio',
-      command: spec.command,
-      args: [...spec.args],
-      ...(Object.keys(forwardedEnv).length > 0 || spec.env
-        ? { env: { ...forwardedEnv, ...spec.env } }
-        : {}),
-      enabled: true,
-      mode: spec.required ? 'required' : 'optional',
-    };
+  const mergedServers = userMcpServers(userSettings);
+  for (const [name, encoded] of encodeMcpServers(museMcpEncoders, servers).entries) {
     const existing = mergedServers[name];
     if (existing !== undefined && stableStringify(existing) !== stableStringify(encoded)) {
       throw new Error(
@@ -116,28 +164,23 @@ export function buildMuseMcpConfigDir(
     mergedServers[name] = encoded;
   }
 
+  const { mcp_servers: _legacy, ...userSettingsWithoutLegacy } = userSettings;
   const mergedSettings: Record<string, unknown> = {
-    ...userSettings,
+    ...userSettingsWithoutLegacy,
     schema_version: 1,
-    mcp_servers: mergedServers,
+    mcpServers: mergedServers,
   };
-  const digest = createHash('sha256').update(stableStringify(mergedSettings)).digest('hex').slice(0, 16);
-  const baseDir = join(tmpdir(), 'unleashd-muse-mcp', digest);
+  const baseDir = mkdtempSync(join(tmpdir(), 'unleashd-muse-mcp-'));
+  chmodSync(baseDir, 0o700);
   const generatedRoot = join(baseDir, 'muse');
-  mkdirSync(generatedRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(generatedRoot, { mode: 0o700 });
 
   // Mirror the user's config entries (auth, trust, skills, hooks) so the
   // XDG redirect hides nothing. settings.json is the merged copy, not a link.
   if (existsSync(root)) {
     for (const entry of readdirSync(root)) {
       if (entry === 'settings.json') continue;
-      const target = join(generatedRoot, entry);
-      try {
-        unlinkSync(target);
-      } catch {
-        // Absent (or dangling from a removed user file); relink below.
-      }
-      symlinkSync(join(root, entry), target);
+      symlinkSync(join(root, entry), join(generatedRoot, entry));
     }
   }
 

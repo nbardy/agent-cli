@@ -28,6 +28,7 @@ describe('live cursor required MCP', { skip: !enabled }, () => {
       extraArgs: ['--mode', 'ask'],
       mcpServers: {
         unleashd_echo: {
+          kind: 'stdio',
           command: process.execPath,
           args: [join(fixtureDir, 'muse-mcp-echo.mjs')],
           env: { MUSE_MCP_ECHO_LOG: logPath },

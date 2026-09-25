@@ -23,7 +23,7 @@ import type { HarnessConfig } from '../types.ts';
  *   --workspace <PATH> on first turn only (resume inherits workspace)
  *
  * MCP encoding is file-based: muse takes no MCP argv or env, so the encoder
- * merges canonical server specs into the `mcp_servers` block of a copy of
+ * merges canonical server specs into the `mcpServers` block of a copy of
  * the user's settings.json and redirects the child via XDG_CONFIG_HOME (see
  * muse-mcp-settings.ts). Entries carry explicit `mode` (required/optional)
  * and the CLI aborts the run when a required server fails startup, which is
@@ -47,7 +47,7 @@ export const museConfig: HarnessConfig = {
   // name conflict with different content throws instead of shadowing.
   mcp: (servers) => {
     const { baseDir } = buildMuseMcpConfigDir(servers);
-    return { env: { XDG_CONFIG_HOME: baseDir } };
+    return { args: [], env: { XDG_CONFIG_HOME: baseDir }, ownedPaths: [baseDir] };
   },
 
   // Both create and resume use the same flag; build.ts suppresses create on resume

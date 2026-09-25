@@ -1,3 +1,4 @@
+import { type McpKindEncoders, encodeMcpServers, headersViaEnv } from '../mcp-encoding.ts';
 import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
@@ -24,33 +25,40 @@ import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
  * unrelated workspace configuration. Ordinary Claude conversations do not
  * pass MCP config and keep the normal global configuration behavior.
  *
- * Claude has no per-server "required" knob. The harness-level `required`
- * capability therefore means that required servers are encoded in an explicit,
- * isolated process configuration; the caller still owns the Buddy tool contract.
+ * Claude has no per-server "required" knob: a server that fails to connect
+ * is reported as `status:"failed"` in the init event and the turn runs on
+ * without it. Required HTTP servers are therefore probed by the runner
+ * (mcp-startup.ts); required stdio servers rely on the explicit, isolated
+ * process configuration and the caller's Buddy tool contract.
  */
-function claudeMcpEncoding(
-  servers: Readonly<Record<string, McpServerSpec>>
-): McpEncoding {
-  const mcpServers: Record<string, unknown> = {};
-  const env: Record<string, string> = {};
-  for (const [name, spec] of Object.entries(servers)) {
-    if (spec.env) {
-      for (const [key, value] of Object.entries(spec.env)) {
-        if (key in env && env[key] !== value) {
-          throw new Error(`MCP servers require conflicting values for environment variable ${key}`);
-        }
-        env[key] = value;
-      }
-    }
-    mcpServers[name] = {
+const claudeMcpEncoders: McpKindEncoders<Record<string, unknown>> = {
+  // Stdio env goes on the claude process, which its MCP children inherit;
+  // values stay out of argv.
+  stdio: (_name, spec) => ({
+    entry: {
       command: spec.command,
       args: [...spec.args],
       ...(spec.cwd ? { cwd: spec.cwd } : {}),
-    };
-  }
+    },
+    env: spec.env ?? {},
+  }),
+  // Claude expands `${VAR}` inside an inline `--mcp-config` document
+  // (verified 2026-09-25 against claude 2.1.282: a local streamable-HTTP
+  // server received `Authorization: Bearer <value of VAR>`), so the header
+  // value rides the process env and argv only carries the reference.
+  http: (name, spec) => {
+    const headers = headersViaEnv(name, spec.headers ?? {}, (envName) => `\${${envName}}`);
+    return { entry: { type: 'http', url: spec.url, headers: headers.headers }, env: headers.env };
+  },
+};
+
+function claudeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): McpEncoding {
+  const { entries, env } = encodeMcpServers(claudeMcpEncoders, servers);
+  const mcpServers = Object.fromEntries(entries);
   return {
     args: ['--strict-mcp-config', '--mcp-config', JSON.stringify({ mcpServers })],
-    ...(Object.keys(env).length > 0 ? { env } : {}),
+    env,
+    ownedPaths: [],
   };
 }
 

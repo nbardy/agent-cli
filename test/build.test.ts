@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { buildCommand } from '../src/build.ts';
+import {
+  CLAUDE_PRINT_BG_WAIT_CEILING_ENV,
+  CLAUDE_PRINT_BG_WAIT_CEILING_MS,
+} from '../src/harnesses/claude.ts';
 import { listHarnesses } from '../src/harnesses/index.ts';
+import { commandSpawnEnv } from '../src/process-runner.ts';
 import { resolveBinary } from '../src/resolve.ts';
 
 // =============================================================================
@@ -72,6 +77,25 @@ describe('claude', () => {
   it('stdin is prompt (Claude reads prompt from stdin)', () => {
     const spec = buildCommand('claude', { prompt: 'test' });
     assert.strictEqual(spec.stdin, 'prompt');
+  });
+
+  it('defaults the print-mode background wait to 12 hours, without overriding an explicit setting', () => {
+    const spec = buildCommand('claude', { prompt: 'test' });
+    assert.equal(
+      spec.envDefaults?.[CLAUDE_PRINT_BG_WAIT_CEILING_ENV],
+      String(CLAUDE_PRINT_BG_WAIT_CEILING_MS)
+    );
+    assert.equal(CLAUDE_PRINT_BG_WAIT_CEILING_MS, 12 * 60 * 60 * 1000);
+
+    const filled = commandSpawnEnv(spec, { PATH: '/usr/bin' });
+    assert.equal(filled?.[CLAUDE_PRINT_BG_WAIT_CEILING_ENV], String(CLAUDE_PRINT_BG_WAIT_CEILING_MS));
+    assert.equal(filled?.PATH, '/usr/bin');
+
+    const kept = commandSpawnEnv(spec, {
+      PATH: '/usr/bin',
+      [CLAUDE_PRINT_BG_WAIT_CEILING_ENV]: '10000',
+    });
+    assert.equal(kept?.[CLAUDE_PRINT_BG_WAIT_CEILING_ENV], '10000');
   });
 });
 

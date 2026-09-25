@@ -29,6 +29,24 @@ export function attachReadableStream(
   stream.resume();
 }
 
+/**
+ * Spawn environment: harness defaults fill gaps, the parent environment wins
+ * when it already set a variable, and spec.env (MCP) wins over both.
+ * Returns undefined when there is nothing to overlay, so spawn inherits.
+ */
+export function commandSpawnEnv(
+  spec: Pick<CommandSpec, 'env' | 'envDefaults'>,
+  parent: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv | undefined {
+  if (!spec.env && !spec.envDefaults) return undefined;
+  const env: NodeJS.ProcessEnv = { ...parent };
+  for (const [key, value] of Object.entries(spec.envDefaults ?? {})) {
+    if (env[key] === undefined || env[key] === '') env[key] = value;
+  }
+  if (spec.env) Object.assign(env, spec.env);
+  return env;
+}
+
 export function runCommand(
   harness: string,
   options: RunOptions = {}
@@ -46,12 +64,13 @@ export function runCommand(
     // let spawn handle ENOENT with its own error path
   }
   const useCallbacks = !!options.onStdout || !!options.onStderr;
+  // Harness-provided env is an overlay. Replacing process.env here would
+  // drop PATH, credentials, and provider configuration from the child.
+  const env = commandSpawnEnv(spec);
   const child = spawn(effectiveBin, args, {
     cwd: options.cwd,
     detached: options.detached === true,
-    // Harness-provided env is an overlay. Replacing process.env here would
-    // drop PATH, credentials, and provider configuration from the child.
-    ...(spec.env ? { env: { ...process.env, ...spec.env } } : {}),
+    ...(env ? { env } : {}),
     stdio: ['pipe', useCallbacks ? 'pipe' : 'inherit', useCallbacks ? 'pipe' : 'inherit'],
   });
 

@@ -2,6 +2,16 @@ import { type McpKindEncoders, encodeMcpServers, headersViaEnv } from '../mcp-en
 import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
 /**
+ * How long `claude -p` waits for background agents after the main thread goes
+ * idle. Claude Code's own default is 600000 (10 minutes); after that it
+ * prints "Background tasks still running after Ns; terminating.", stops the
+ * agents, and exits 0. Twelve hours matches a long Buddy turn. Callers override
+ * by setting CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS themselves.
+ */
+export const CLAUDE_PRINT_BG_WAIT_CEILING_MS = 12 * 60 * 60 * 1000;
+export const CLAUDE_PRINT_BG_WAIT_CEILING_ENV = 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS';
+
+/**
  * Claude CLI harness config.
  *
  * Session management:
@@ -83,6 +93,10 @@ export const claudeConfig: HarnessConfig = {
   //   low | medium | high | xhigh | max
   // See `claude --help`. Flag is session-wide and works with -p/--print.
   reasoningFlags: (level) => ['--effort', level],
+
+  envDefaults: {
+    [CLAUDE_PRINT_BG_WAIT_CEILING_ENV]: String(CLAUDE_PRINT_BG_WAIT_CEILING_MS),
+  },
 
   mcp: claudeMcpEncoding,
 };

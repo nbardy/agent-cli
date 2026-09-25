@@ -172,6 +172,7 @@ function buildFromConfig(config: HarnessConfig, options: BuildOptions): CommandS
     stdout: config.stdout,
     prompt: options.prompt,
     ...(Object.keys(mcpEncoding.env).length > 0 ? { env: mcpEncoding.env } : {}),
+    ...(config.envDefaults ? { envDefaults: config.envDefaults } : {}),
     ownedPaths: mcpEncoding.ownedPaths,
   };
 }

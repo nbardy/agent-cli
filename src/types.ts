@@ -199,6 +199,12 @@ export interface HarnessConfig {
   /** Extra args appended to all commands (e.g. ['--output-format', 'stream-json']) */
   readonly extraArgs?: readonly string[];
 
+  /**
+   * Environment defaults applied only when the parent process has not set
+   * the variable. Explicit caller env and MCP `env` both win.
+   */
+  readonly envDefaults?: Readonly<Record<string, string>>;
+
   /** CLI flag for working directory (undefined = use process cwd option) */
   readonly cwdFlag?: string;
 
@@ -354,9 +360,16 @@ export interface CommandSpec {
   /**
    * Extra environment variables the process must be spawned with (e.g.
    * opencode's OPENCODE_CONFIG_CONTENT). MERGE these over the inherited
-   * environment — never use them as a replacement env.
+   * environment — never use them as a replacement env. These win over
+   * `envDefaults`.
    */
   env?: Readonly<Record<string, string>>;
+
+  /**
+   * Harness defaults filled in only for variables the parent environment
+   * left unset. An explicit parent value is kept.
+   */
+  envDefaults?: Readonly<Record<string, string>>;
 
   /**
    * Temp files/dirs written for this process only. runCommand deletes them

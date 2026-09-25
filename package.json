@@ -25,6 +25,7 @@
     "test:live:muse-mcp": "node scripts/run-live-muse-mcp-test.mjs",
     "test:live:cursor-mcp": "AGENT_CLI_LIVE_CURSOR_MCP=1 node --experimental-strip-types --test test/live-cursor-mcp.test.ts",
     "test:live:subagents": "node scripts/run-live-subagent-probe.mjs",
+    "test:live:claude-bg": "AGENT_CLI_LIVE_CLAUDE_BG=1 node --experimental-strip-types --test test/live-claude-background-agents.test.ts",
     "test:live:time-effort": "node scripts/run-time-effort-test.mjs",
     "manual:capture": "node manual_tests/capture-live-run.mjs",
     "manual:subagents:codex:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner raw",

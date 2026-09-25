@@ -133,9 +133,13 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (obj.type === 'result') {
-      return asString(obj.subtype) === 'success'
-        ? [{ type: 'turn.complete', reason: 'success' }]
-        : failureEvents(asString(obj.result) ?? 'Claude returned an error');
+      // Claude 2.1.282 reports a 429 session limit as subtype "success" with
+      // is_error true, the message only on `result` (no text deltas). Reading
+      // subtype alone made that an empty successful turn.
+      const failed = asString(obj.subtype) !== 'success' || obj.is_error === true;
+      return failed
+        ? failureEvents(asString(obj.result) ?? 'Claude returned an error')
+        : [{ type: 'turn.complete', reason: 'success' }];
     }
 
     return [];

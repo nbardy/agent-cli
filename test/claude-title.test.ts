@@ -32,6 +32,23 @@ test('claude custom-title line becomes a session.title event', () => {
   ]);
 });
 
+test('a session-limit result marked success is out_of_tokens, not an empty turn', () => {
+  const events = createClaudeParser()({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    api_error_status: 429,
+    result: "You've hit your session limit · resets 2am (Asia/Makassar)",
+  });
+  assert.deepEqual(events, [
+    {
+      type: 'out_of_tokens',
+      message: "Out of tokens: You've hit your session limit · resets 2am (Asia/Makassar)",
+    },
+    { type: 'turn.complete', reason: 'out_of_tokens' },
+  ]);
+});
+
 test('blank titles emit nothing rather than an empty label', () => {
   const parser = createClaudeParser();
   assert.deepEqual(parser({ type: 'ai-title', aiTitle: '   ' }), []);

@@ -1,7 +1,7 @@
 import type { CompletionReason, UnifiedAgentEvent } from './runtime-types.ts';
 
 const OUT_OF_TOKENS_PATTERN =
-  /out of tokens|token limit|usage limit|insufficient (?:credits|balance)|exceeded(?: your)?(?: current)? quota|credit balance|rate limit exceeded/i;
+  /out of tokens|token limit|usage limit|session limit|insufficient (?:credits|balance)|exceeded(?: your)?(?: current)? quota|credit balance|rate limit exceeded/i;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping intentionally matches ESC and CSI control bytes.
 const ANSI_RE = /[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 

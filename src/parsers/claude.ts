@@ -28,6 +28,45 @@ function claudeUsageEvents(rawUsage: unknown): UnifiedAgentEvent[] {
   ];
 }
 
+/**
+ * Claude's sub-agent spawn tool. Claude Code 2.1 renamed `Task` to `Agent`;
+ * older sessions (and transcripts on disk) still carry `Task`, so both mean
+ * "spawn a sub-agent". Consumers ask this set rather than matching a name.
+ */
+export const CLAUDE_SUBAGENT_TOOL_NAMES: ReadonlySet<string> = new Set(['Agent', 'Task']);
+
+/**
+ * Background-task lifecycle, streamed live as `system` lines. `task_progress`,
+ * `task_updated` and `background_tasks_changed` repeat what these two say, so
+ * only the start and the terminal notification become events. A line missing
+ * a field is reported on stderr rather than guessed at.
+ */
+function claudeTaskStarted(obj: Record<string, unknown>): UnifiedAgentEvent[] {
+  const taskId = asString(obj.task_id);
+  const toolUseId = asString(obj.tool_use_id);
+  const description = asString(obj.description);
+  if (!taskId || !toolUseId || description === undefined) {
+    return [{ type: 'stderr', text: 'agent-cli: malformed claude task_started\n' }];
+  }
+  const background = obj.is_backgrounded === true;
+  return [{ type: 'task.started', taskId, toolUseId, background, description }];
+}
+
+function claudeTaskFinished(obj: Record<string, unknown>): UnifiedAgentEvent[] {
+  const taskId = asString(obj.task_id);
+  const toolUseId = asString(obj.tool_use_id);
+  const status = asString(obj.status);
+  if (!taskId || !toolUseId || !status) {
+    return [{ type: 'stderr', text: 'agent-cli: malformed claude task_notification\n' }];
+  }
+  return [{ type: 'task.finished', taskId, toolUseId, status }];
+}
+
+const CLAUDE_TASK_SUBTYPES = new Map<string, (obj: Record<string, unknown>) => UnifiedAgentEvent[]>([
+  ['task_started', claudeTaskStarted],
+  ['task_notification', claudeTaskFinished],
+]);
+
 export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
   let pendingTool: { name: string; inputJson: string } | null = null;
 
@@ -52,6 +91,8 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
     if (obj.type === 'system' && asString(obj.subtype) === 'init') {
       return [{ type: 'turn.started' }];
     }
+    const taskHandler = obj.type === 'system' ? CLAUDE_TASK_SUBTYPES.get(asString(obj.subtype) ?? '') : undefined;
+    if (taskHandler) return taskHandler(obj);
 
     if (obj.type === 'stream_event') {
       const event = asObject(obj.event);
@@ -86,7 +127,7 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
         } catch {}
       }
       return [
-        name === 'AskUserQuestion' || name === 'Task'
+        name === 'AskUserQuestion' || CLAUDE_SUBAGENT_TOOL_NAMES.has(name)
           ? { type: 'tool.use', name, input }
           : { type: 'tool.use', name, input, displayText: `${name}\n` },
       ];

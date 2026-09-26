@@ -21,6 +21,7 @@ export type {
   MuseReasoningLevel,
   UnifiedSubagentStatus,
   UnifiedSubagentStateEvent,
+  UnifiedTaskEvent,
   TurnMode,
   CompletionReason,
 } from './runtime-types.ts';

@@ -36,6 +36,10 @@ export type {
 } from './types.ts';
 
 export { buildCommand } from './build.ts';
+export { CLAUDE_SUBAGENT_TOOL_NAMES } from './parsers/claude.ts';
+// Replays a recorded harness stream through the same parser executeCommand uses.
+export { createParser } from './parsers/index.ts';
+export type { HarnessParser } from './parsers/index.ts';
 export { CODEX_REASONING_LEVELS, runCommand, executeCommand, executeTurn } from './run.ts';
 export type {
   RunOptions,
@@ -52,6 +56,7 @@ export type {
   ClaudeReasoningLevel,
   UnifiedSubagentStatus,
   UnifiedSubagentStateEvent,
+  UnifiedTaskEvent,
   TurnMode,
   CompletionReason,
 } from './run.ts';

@@ -55,6 +55,25 @@ export interface UnifiedSubagentStateEvent {
   message?: string;
 }
 
+/**
+ * A harness-managed task's lifecycle: a sub-agent or shell the harness runs and
+ * tracks by `taskId`. Claude streams these as `system` task_started /
+ * task_notification lines (recorded: test/fixtures/claude-2.1.283-background-agent.jsonl).
+ * `background` is true when the task outlives the tool call that launched it
+ * (`run_in_background`): `claude -p` then waits for it after the parent turn
+ * goes idle, so a consumer can tell "silent but waiting" from "stalled".
+ * `status` is the harness's own word (completed, failed, stopped), verbatim.
+ */
+export type UnifiedTaskEvent =
+  | {
+      type: 'task.started';
+      taskId: string;
+      toolUseId: string;
+      background: boolean;
+      description: string;
+    }
+  | { type: 'task.finished'; taskId: string; toolUseId: string; status: string };
+
 type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   harness: THarness;
   mode: TurnMode;
@@ -154,6 +173,7 @@ export type UnifiedAgentEvent =
   | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }
   | { type: 'tool.result'; output: unknown; isError?: boolean }
   | UnifiedSubagentStateEvent
+  | UnifiedTaskEvent
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
   // Provider-counted usage for the request that just completed. Emitted only

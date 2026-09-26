@@ -2,6 +2,7 @@ import { createAsyncQueue } from './async-queue.ts';
 import {
   classifyError,
   flushDebugTrailing,
+  isTerminalOutOfTokens,
   looksLikeInteractiveAuthPrompt,
   mirrorDebugLines,
   stripAnsi,
@@ -114,9 +115,17 @@ function createStdoutProcessor(
   };
 }
 
+// A CLI-declared fatal line (`ERROR: ...`, codex's plain-text account errors).
+// Only these are classified live: codex also logs transient retries to stderr
+// (e.g. "stream error: rate limit exceeded; retrying 1/5"), and stopping the
+// child on one of those would abort a turn that was about to recover.
+const FATAL_STDERR_LINE = /^error:/i;
+
 function createStderrProcessor(request: ExecuteCommandRequest, emit: Emit) {
   let stderrBuffer = '';
   let debugTrailing = '';
+  let lineTrailing = '';
+  let outOfTokensEmitted = false;
   const rawPrefix = `[agent-cli raw ${request.harness} stderr] `;
 
   return {
@@ -127,6 +136,17 @@ function createStderrProcessor(request: ExecuteCommandRequest, emit: Emit) {
       }
       stderrBuffer += text;
       emit({ type: 'stderr', text });
+      const lines = (lineTrailing + text).split('\n');
+      lineTrailing = lines.pop() ?? '';
+      for (const raw of lines) {
+        const line = stripAnsi(raw).trim();
+        if (outOfTokensEmitted || !FATAL_STDERR_LINE.test(line)) continue;
+        const classified = classifyError(line);
+        if (classified.kind !== 'out_of_tokens') continue;
+        outOfTokensEmitted = true;
+        // emit() stops the child on out_of_tokens (see executeCommand).
+        emit({ type: 'out_of_tokens', message: classified.message });
+      }
     },
     flush(): void {
       if (request.debugRawEvents) flushDebugTrailing(rawPrefix, debugTrailing);
@@ -185,6 +205,9 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     stdoutState: () => stdoutStreamState,
   });
 
+  // Bound once the child is spawned; out_of_tokens can only arrive from its output.
+  let stopForOutOfTokens = (): void => {};
+
   const emit = (event: UnifiedAgentEvent): void => {
     if (event.type === 'turn.started') {
       if (turnStartedSeen) return;
@@ -195,6 +218,10 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       completionReason = event.reason;
     } else if (event.type === 'out_of_tokens') {
       completionReason = 'out_of_tokens';
+      // Exhausted credits are terminal: codex prints its usage-limit line and
+      // then idles ~4.5 s before exiting on its own. Stop it now. This is NOT a
+      // user stop (stopRequested stays false), so the reason stays out_of_tokens.
+      if (isTerminalOutOfTokens(event.message)) stopForOutOfTokens();
     } else if (event.type === 'error' && completionReason === 'success') {
       completionReason = 'error';
     }
@@ -266,6 +293,8 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     }
   };
 
+  stopForOutOfTokens = () => killChild();
+
   // Runner-enforced required MCP where the CLI would drop a failed server
   // silently (cursor stdio; every harness for HTTP — see requiresStartupProbe).
   // Runs alongside the CLI: a failed probe emits the startup error, kills the
@@ -304,7 +333,11 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
         finalReason = 'error';
         if (!completeEventSeen) emit({ type: 'turn.complete', reason: 'error' });
       } else if (!completeEventSeen) {
-        if (stopRequested || exitCode === null) {
+        // out_of_tokens first: we SIGTERM the child ourselves on it, so
+        // exitCode === null here means "we stopped it for credits", not killed.
+        if (completionReason === 'out_of_tokens') {
+          finalReason = 'out_of_tokens';
+        } else if (stopRequested || exitCode === null) {
           finalReason = 'killed';
         } else if (completionReason !== 'success') {
           finalReason = completionReason;

@@ -1,7 +1,17 @@
 import type { CompletionReason, UnifiedAgentEvent } from './runtime-types.ts';
 
+// `rate limit exceeded` is transient, not exhausted credits, but it stays in
+// the out_of_tokens class: callers (the Buddy memory-review ladder) advance to
+// the next provider on out_of_tokens and rely on 429s doing the same.
 const OUT_OF_TOKENS_PATTERN =
   /out of tokens|token limit|usage limit|session limit|insufficient (?:credits|balance)|exceeded(?: your)?(?: current)? quota|credit balance|rate limit exceeded/i;
+const TRANSIENT_RATE_LIMIT_PATTERN = /rate limit exceeded/i;
+
+/** Out-of-tokens that is final for this run (the executor stops the child on it).
+ * A transient rate limit is excluded: CLIs log it mid-turn while retrying. */
+export function isTerminalOutOfTokens(message: string): boolean {
+  return !TRANSIENT_RATE_LIMIT_PATTERN.test(message);
+}
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping intentionally matches ESC and CSI control bytes.
 const ANSI_RE = /[\u001b\u009b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 

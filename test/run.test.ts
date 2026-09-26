@@ -94,6 +94,17 @@ if (prompt === 'contract-usage-limit') {
   process.exit(1);
 }
 
+// Plain-text form measured 2026-09-26 (codex exec -m gpt-6-luna, credits
+// exhausted): one ERROR line, then the CLI idles ~4.5 s before exiting. The
+// 30 s sleep stands in for that idle so a missed stop is unmistakable.
+if (prompt === 'contract-usage-limit-idle') {
+  emit({ type: 'thread.started', thread_id: 'thread-usage-limit-idle' });
+  emit({ type: 'turn.started' });
+  process.stderr.write('ERROR: You\u2019ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 27th, 2026 10:15 PM.\\n');
+  setTimeout(() => process.exit(1), 30000);
+  return;
+}
+
 if (prompt === 'contract-subagent-tools') {
   emit({ type: 'thread.started', thread_id: 'thread-subagents' });
   emit({ type: 'turn.started' });
@@ -514,6 +525,33 @@ describe('executeCommand contract', { concurrency: true }, () => {
       )
     );
     assert.ok(!events.some((event) => event.type === 'error'));
+  });
+
+  // Regression: agent-cli used to wait for codex to exit on its own after the
+  // usage-limit line; a Buddy fallback ladder paid that idle on every rung.
+  // Out-of-credits must stop the child at once and still report out_of_tokens
+  // (our own SIGTERM must not read as 'killed').
+  it('stops the CLI as soon as it reports out of credits', async () => {
+    const startedAt = Date.now();
+    const turn = executeCommand({
+      harness: 'codex',
+      mode: 'conversation',
+      prompt: 'contract-usage-limit-idle',
+      cwd: workspace,
+      model: 'gpt-6-luna',
+      yolo: false,
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+
+    assert.ok(Date.now() - startedAt < 5000, `took ${Date.now() - startedAt} ms`);
+    assert.strictEqual(completion.reason, 'out_of_tokens');
+    assert.deepStrictEqual(
+      events.filter((event) => event.type === 'turn.complete').map((event) => event.reason),
+      ['out_of_tokens']
+    );
+    assert.throws(() => process.kill(turn.child.pid!, 0), { code: 'ESRCH' });
   });
 
   it('treats conversation exit without turn.complete as error even with exit code 0', async () => {

@@ -175,7 +175,7 @@ export type UnifiedAgentEvent =
   | { type: 'session.title'; title: string; source: 'ai' | 'custom' }
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
-  | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string }
+  | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string; phase?: 'started' | 'completed' }
   | { type: 'tool.result'; output: unknown; isError?: boolean }
   | UnifiedSubagentStateEvent
   | UnifiedTaskEvent

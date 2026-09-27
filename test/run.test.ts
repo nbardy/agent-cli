@@ -1107,7 +1107,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
         event.type === 'tool.use'
     );
 
-    assert.deepStrictEqual(toolEvents.map((event) => event.name), ['spawn_agent', 'wait']);
+    assert.deepStrictEqual(toolEvents.map((event) => [event.name, event.phase]), [
+      ['spawn_agent', 'started'],
+      ['wait', 'started'],
+    ]);
     assert.strictEqual(toolEvents[0].input.prompt, 'Write file_1.md with test-confirmed');
     const states = events.filter((event) => event.type === 'subagent.state');
     assert.deepStrictEqual(states.map((event) => event.status), ['pending', 'completed']);

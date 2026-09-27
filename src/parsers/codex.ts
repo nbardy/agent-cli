@@ -108,7 +108,7 @@ function collabSubagentEvents(item: Record<string, unknown>): UnifiedAgentEvent[
   // A failed/partial call may identify no child. Keep the attempted tool visible
   // to restricted consumers; there is no child state to emit alongside it.
   if (childIds.size === 0) {
-    return [{ type: 'tool.use', name: toolName, input: collabToolInput(item) }];
+    return [{ type: 'tool.use', name: toolName, input: collabToolInput(item), phase: 'completed' }];
   }
   const parentId = asString(item.sender_thread_id);
   const operationId = asString(item.id);
@@ -190,11 +190,13 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
         ];
       }
       if (asString(item?.type) === 'collab_tool_call') {
+        const name = asString(item?.tool) ?? 'collab_tool';
         return [
           {
             type: 'tool.use',
-            name: asString(item?.tool) ?? 'collab_tool',
+            name,
             input: collabToolInput(item!),
+            ...(SUBAGENT_OPERATIONS.has(name) ? { phase: 'started' as const } : {}),
           },
         ];
       }

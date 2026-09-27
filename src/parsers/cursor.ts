@@ -199,6 +199,11 @@ export function createCursorParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (type === 'tool_call') return toolCallEvents(obj);
+    // Benchmark A.r1 failed after its answer on this connection bookkeeping event.
+    // Keep unknown connection subtypes fail-closed; the run contract guards reconnection.
+    if (type === 'connection' && asString(obj.subtype) === 'reconnected') {
+      return [{ type: 'progress', source: 'cursor.connection', data: { subtype: 'reconnected' } }];
+    }
     // Reasoning models (grok-4.7, 2026-09-24) stream `thinking` delta/completed
     // records. They used to fall through to "unrecognized event type" errors,
     // which failed every such turn and the memory reviewer on its first step.

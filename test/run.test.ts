@@ -4,7 +4,15 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { createCursorParser } from '../src/parsers/cursor.ts';
 import { type UnifiedAgentEvent, createClaudeParser, executeCommand } from '../src/run.ts';
+
+it('keeps unknown Cursor connection subtypes and event types as errors', () => {
+  const parse = createCursorParser();
+  for (const event of [{ type: 'connection', subtype: 'unknown' }, { type: 'unknown' }]) {
+    assert.strictEqual(parse(event)[0]?.type, 'error');
+  }
+});
 
 function writeCodexShim(binDir: string): void {
   const shimPath = path.join(binDir, 'codex');
@@ -320,6 +328,11 @@ if (prompt === 'cursor-usage-limit') {
   process.exit(1);
 }
 
+if (prompt === 'cursor-billing-verification') {
+  process.stderr.write('402 Billing verification failed\\n');
+  process.exit(1);
+}
+
 if (prompt === 'cursor-success') {
   if (model !== 'composer-2.5') {
     process.stderr.write('unexpected model: ' + model + '\\n');
@@ -330,6 +343,8 @@ if (prompt === 'cursor-success') {
   emit({ type: 'thinking', subtype: 'delta', text: 'Planning the reply', session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'thinking', subtype: 'completed', session_id: 'cursor-session-1', timestamp_ms: 1 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1', timestamp_ms: 1 });
+  // The memory benchmark A.r1 emitted this bookkeeping event after its answer.
+  emit({ type: 'connection', subtype: 'reconnected', session_id: 'cursor-session-1', timestamp_ms: 1790420824355 });
   emit({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi from cursor' }] }, session_id: 'cursor-session-1' });
   emit({ type: 'tool_call', subtype: 'started', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' } } }, session_id: 'cursor-session-1' });
   emit({ type: 'tool_call', subtype: 'completed', call_id: 'tool_1', tool_call: { globToolCall: { args: { targetDirectory: '/tmp', globPattern: '*.ts' }, result: { success: { files: ['a.ts'], totalFiles: 1 } } } }, session_id: 'cursor-session-1' });
@@ -847,6 +862,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
       .map((event) => event.text)
       .join('');
     assert.strictEqual(text, 'hi from cursor');
+    assert.deepStrictEqual(
+      events.filter((event) => event.type === 'progress' && event.source === 'cursor.connection'),
+      [{ type: 'progress', source: 'cursor.connection', data: { subtype: 'reconnected' } }]
+    );
 
     // Canonical MCP naming is what the memory reviewer's tool guard and the
     // Buddy tool UI key on; Cursor's plugin prefix must never leak through.
@@ -932,6 +951,25 @@ describe('executeCommand contract', { concurrency: true }, () => {
     const completion = await turn.completed;
     await eventsPromise;
     assert.strictEqual(completion.reason, 'out_of_tokens');
+  });
+
+  it('keeps Cursor billing verification failure distinct from exhausted credits', async () => {
+    const turn = executeCommand({
+      harness: 'cursor',
+      mode: 'conversation',
+      prompt: 'cursor-billing-verification',
+      cwd: workspace,
+      model: 'composer-2.5',
+      yolo: true,
+    });
+    const eventsPromise = collectEvents(turn.events);
+    const completion = await turn.completed;
+    const events = await eventsPromise;
+    assert.strictEqual(completion.reason, 'error');
+    assert.ok(!events.some((event) => event.type === 'out_of_tokens'));
+    assert.ok(events.some((event) =>
+      event.type === 'error' && /Billing verification failed/.test(event.message)
+    ));
   });
 
   it('resumes cursor with the captured real session id', async () => {

@@ -225,7 +225,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     } else if (event.type === 'error' && completionReason === 'success') {
       completionReason = 'error';
     }
-    if (event.type === 'text.delta' || event.type === 'tool.use') {
+    if (event.type === 'text.delta' || event.type === 'tool.use' || event.type === 'subagent.state') {
       heartbeat.markMeaningful();
     }
     if (!(event.type === 'progress' && event.source === 'agent-cli.heartbeat')) {

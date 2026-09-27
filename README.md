@@ -6,6 +6,18 @@ It centralizes command building, process execution, and event normalization so o
 
 For real-harness debugging utilities that are not part of automated test runs, see `manual_tests/`.
 
+## Native sub-agent events
+
+Codex collab starts emit `tool.use` for transcript display. A completed
+`spawn_agent`, `wait`, or `send_input` with identified children emits only
+`subagent.state` records, not duplicate tool events. A completed call without
+any child identity stays a `tool.use` so restricted consumers can reject it. Consume their canonical status, display description,
+and message directly. `operation` is `spawn`, `wait`, or `message`;
+`operationId`, when supplied by the harness, identifies the completed parent
+operation within this turn. One operation can observe several children, so
+replay keys are `(child id, operationId)`. Missing IDs do not imply replay safety.
+Parent turn completion does not imply native child completion.
+
 ## Token usage
 
 Harnesses that report provider-counted tokens emit a `usage` event carrying

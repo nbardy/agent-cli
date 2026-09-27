@@ -1086,7 +1086,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.strictEqual(textEvents[0].type, 'text.delta');
   });
 
-  it('codex surfaces collab_tool_call items as tool.use events for sub-agent workflows', async () => {
+  it('codex renders collab starts once and emits only native states on completion', async () => {
     const turn = executeCommand({
       harness: 'codex',
       mode: 'conversation',
@@ -1107,20 +1107,10 @@ describe('executeCommand contract', { concurrency: true }, () => {
         event.type === 'tool.use'
     );
 
-    assert.deepStrictEqual(
-      toolEvents.map((event) => [event.name, event.input._phase]),
-      [
-        ['spawn_agent', 'started'],
-        ['spawn_agent', 'completed'],
-        ['wait', 'started'],
-        ['wait', 'completed'],
-      ]
-    );
+    assert.deepStrictEqual(toolEvents.map((event) => event.name), ['spawn_agent', 'wait']);
     assert.strictEqual(toolEvents[0].input.prompt, 'Write file_1.md with test-confirmed');
-    assert.deepStrictEqual(toolEvents[1].input.receiver_thread_ids, ['thread-child-1']);
-    assert.deepStrictEqual(toolEvents[3].input.agents_states, {
-      'thread-child-1': { status: 'completed', message: 'test-confirmed' },
-    });
+    const states = events.filter((event) => event.type === 'subagent.state');
+    assert.deepStrictEqual(states.map((event) => event.status), ['pending', 'completed']);
   });
 
   it('codex surfaces normalized subagent.state events for sub-agent workflows', async () => {
@@ -1148,26 +1138,34 @@ describe('executeCommand contract', { concurrency: true }, () => {
       {
         type: 'subagent.state',
         id: 'thread-child-1',
+        operation: 'spawn',
+        operationId: 'item_1',
         parentId: 'thread-subagents',
         status: 'pending',
         rawStatus: 'pending_init',
-        description: 'Write file_1.md with test-confirmed',
+        description: '[Codex Agent] Write file_1.md with test-confirmed',
         message: 'Pending initialization',
       },
       {
         type: 'subagent.state',
         id: 'thread-child-1',
+        operation: 'wait',
+        operationId: 'item_2',
         parentId: 'thread-subagents',
         status: 'running',
         rawStatus: 'in_progress',
+        description: 'Running wait...',
         message: 'Writing file_1.md',
       },
       {
         type: 'subagent.state',
         id: 'thread-child-1',
+        operation: 'wait',
+        operationId: 'item_3',
         parentId: 'thread-subagents',
         status: 'completed',
         rawStatus: 'completed',
+        description: 'Running wait...',
         message: 'test-confirmed',
       },
     ]);

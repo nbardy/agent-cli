@@ -49,9 +49,14 @@ export interface UnifiedSubagentStateEvent {
   type: 'subagent.state';
   id: string;
   status: UnifiedSubagentStatus;
+  /** Completed parent operation that observed this child state. */
+  operation: 'spawn' | 'wait' | 'message';
+  /** Harness item ID, when supplied; scopes replay detection to this child and turn. */
+  operationId?: string;
   parentId?: string;
   rawStatus?: string;
-  description?: string;
+  /** Display label, including the adapter's fallback when the prompt is absent. */
+  description: string;
   message?: string;
 }
 

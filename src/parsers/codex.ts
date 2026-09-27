@@ -1,14 +1,19 @@
 import { failureEvents } from '../diagnostics.ts';
 import { asObject, asString } from '../json-utils.ts';
-import type { UnifiedAgentEvent, UnifiedSubagentStatus } from '../runtime-types.ts';
+import type {
+  UnifiedAgentEvent,
+  UnifiedSubagentStateEvent,
+  UnifiedSubagentStatus,
+} from '../runtime-types.ts';
 
-const CODEX_COLLAB_TOOL_NAMES = new Set(['spawn_agent', 'wait', 'send_input']);
+const SUBAGENT_OPERATIONS = new Map<string, UnifiedSubagentStateEvent['operation']>([
+  ['spawn_agent', 'spawn'],
+  ['wait', 'wait'],
+  ['send_input', 'message'],
+]);
 
-function collabToolInput(
-  item: Record<string, unknown>,
-  phase: 'started' | 'completed'
-): Record<string, unknown> {
-  const input: Record<string, unknown> = { _phase: phase };
+function collabToolInput(item: Record<string, unknown>): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
   const prompt = asString(item.prompt);
   const senderThreadId = asString(item.sender_thread_id);
   const status = asString(item.status);
@@ -84,35 +89,49 @@ function formatCodexSubagentMessage(
   return undefined;
 }
 
-function collabSubagentEvents(
-  item: Record<string, unknown>,
-  phase: 'started' | 'completed'
-): UnifiedAgentEvent[] {
-  const toolName = asString(item.tool);
-  if (phase !== 'completed' || !toolName || !CODEX_COLLAB_TOOL_NAMES.has(toolName)) return [];
+/** Completed collab calls have one representation: canonical child states, not a second tool.use. */
+function collabSubagentEvents(item: Record<string, unknown>): UnifiedAgentEvent[] {
+  const toolName = asString(item.tool) ?? '';
+  const operation = SUBAGENT_OPERATIONS.get(toolName);
+  if (!operation) {
+    return [{ type: 'tool.use', name: toolName || 'collab_tool', input: collabToolInput(item) }];
+  }
 
   const childIds = new Set(asStringArray(item.receiver_thread_ids));
-  const agentStates = asObject(item.agents_states);
+  const agentStates = Array.isArray(item.agents_states) ? null : asObject(item.agents_states);
   if (agentStates) {
-    for (const threadId of Object.keys(agentStates)) childIds.add(threadId);
+    // A malformed entry is not evidence of a child; receiver IDs can still identify it.
+    for (const [id, state] of Object.entries(agentStates)) {
+      if (asObject(state) && !Array.isArray(state)) childIds.add(id);
+    }
   }
-  if (childIds.size === 0) return [];
-
+  // A failed/partial call may identify no child. Keep the attempted tool visible
+  // to restricted consumers; there is no child state to emit alongside it.
+  if (childIds.size === 0) {
+    return [{ type: 'tool.use', name: toolName, input: collabToolInput(item) }];
+  }
   const parentId = asString(item.sender_thread_id);
-  const description = asString(item.prompt);
-  const fallbackStatus: UnifiedSubagentStatus = toolName === 'spawn_agent' ? 'pending' : 'running';
+  const operationId = asString(item.id);
+  const prompt = asString(item.prompt)?.trim();
+  const description =
+    operation === 'spawn'
+      ? prompt ? `[Codex Agent] ${prompt}` : 'Running Codex sub-agent...'
+      : `Running ${toolName}...`;
+  const fallbackStatus: UnifiedSubagentStatus = operation === 'spawn' ? 'pending' : 'running';
 
   return [...childIds].map((id) => {
     const state = asObject(agentStates?.[id]);
     const rawStatus = asString(state?.status);
-    const message = formatCodexSubagentMessage(toolName, rawStatus, asString(state?.message));
+    const message = formatCodexSubagentMessage(toolName, rawStatus, asString(state?.message)?.trim());
     return {
       type: 'subagent.state',
       id,
+      operation,
+      ...(operationId ? { operationId } : {}),
       status: normalizeCodexSubagentStatus(rawStatus, fallbackStatus),
       ...(parentId ? { parentId } : {}),
       ...(rawStatus ? { rawStatus } : {}),
-      ...(description ? { description } : {}),
+      description,
       ...(message ? { message } : {}),
     };
   });
@@ -175,9 +194,8 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
           {
             type: 'tool.use',
             name: asString(item?.tool) ?? 'collab_tool',
-            input: collabToolInput(item!, 'started'),
+            input: collabToolInput(item!),
           },
-          ...collabSubagentEvents(item!, 'started'),
         ];
       }
       return [
@@ -226,14 +244,7 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
         return [{ type: 'tool.use', name: 'web_search', input: {} }];
       }
       if (itemType === 'collab_tool_call') {
-        return [
-          {
-            type: 'tool.use',
-            name: asString(item?.tool) ?? 'collab_tool',
-            input: collabToolInput(item!, 'completed'),
-          },
-          ...collabSubagentEvents(item!, 'completed'),
-        ];
+        return collabSubagentEvents(item!);
       }
       return [{ type: 'progress', source: 'codex.item_completed', data: { itemType } }];
     }

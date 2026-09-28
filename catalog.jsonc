@@ -6,7 +6,7 @@
 // `defaultModelId` must match one `id` in `models`. `isDefault` is UI hint.
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 {
-  "revision": "2026-09-24.gpt-6-sol-luna",
+  "revision": "2026-09-28.claude-sonnet-5-5",
   "providers": [
     {
       "id": "claude",
@@ -17,6 +17,7 @@
       "models": [
         { "id": "fable", "displayName": "Claude Fable 5.1", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "isDefault": true, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "sonnet", "displayName": "Sonnet", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
         { "id": "haiku", "displayName": "Haiku", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } }
       ]

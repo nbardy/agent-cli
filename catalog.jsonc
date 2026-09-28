@@ -1,12 +1,13 @@
-// Shared provider/model registry — single source of truth for both
-// agent-cli-tool and unleashd (via vendor/agent-cli-tool/catalog.jsonc).
-// Loaded by both repos at runtime/build. See src/catalog.ts for loader.
+// Provider/model registry: the one data file. unleashd generates its typed
+// catalog from this (shared/scripts/gen-catalog.ts); nothing reads it at runtime.
 //
-// To add a model: add entry to the relevant provider's `models` array.
-// `defaultModelId` must match one `id` in `models`. `isDefault` is UI hint.
+// To add a model: add an entry to the provider's `models` array, then run
+// `pnpm --filter @unleashd/shared gen:catalog` in unleashd.
+// `defaultModelId` must match one `id` in `models`; `reasoning.defaultEffort` one of its levels.
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
+// `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-28.claude-sonnet-5-5",
+  "revision": "2026-09-28.registry-deslop",
   "providers": [
     {
       "id": "claude",
@@ -15,33 +16,33 @@
       "defaultModelId": "claude-opus-5-5",
       "supportsDynamicModels": false,
       "models": [
-        { "id": "fable", "displayName": "Claude Fable 5.1", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
-        { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "isDefault": true, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
-        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
-        { "id": "sonnet", "displayName": "Sonnet", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } },
-        { "id": "haiku", "displayName": "Haiku", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "high" } }
+        { "id": "fable", "displayName": "Claude Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "sonnet", "displayName": "Sonnet", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "haiku", "displayName": "Haiku", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
       ]
     },
     {
       "id": "codex",
       "displayName": "Codex",
       "shortName": "X",
-      "defaultModelId": "gpt-5.6-sol",
+      "defaultModelId": "gpt-6-sol",
       "supportsDynamicModels": false,
       "models": [
-        { "id": "gpt-5.6-sol", "displayName": "GPT-5.6 Sol", "isDefault": true, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "ultra" } },
-        { "id": "gpt-5.6-terra", "displayName": "GPT-5.6 Terra", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-5.6-luna", "displayName": "GPT-5.6 Luna", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-5.5", "displayName": "GPT-5.5", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-5.4", "displayName": "GPT-5.4", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-6-astra", "displayName": "GPT-6 Astra", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
+        { "id": "gpt-5.6-sol", "displayName": "GPT-5.6 Sol", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.6-terra", "displayName": "GPT-5.6 Terra", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.6-luna", "displayName": "GPT-5.6 Luna", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.5", "displayName": "GPT-5.5", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.4", "displayName": "GPT-5.4", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-6-astra", "displayName": "GPT-6 Astra", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         // gpt-6-sol / gpt-6-luna: offered by codex-cli 0.156.1 (models_cache.json 2026-09-24).
         // Levels are what the cache reports, NOT the minimal..ultra list the older
         // entries carry: the cache offers no "minimal" for any model and no "ultra" for Luna.
-        { "id": "gpt-6-sol", "displayName": "GPT-6 Sol", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-6-luna", "displayName": "GPT-6 Luna", "isDefault": false, "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "xhigh" } },
-        { "id": "gpt-5.3-codex-spark", "displayName": "Codex Spark", "isDefault": false, "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "xhigh" } }
+        { "id": "gpt-6-sol", "displayName": "GPT-6 Sol", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-6-luna", "displayName": "GPT-6 Luna", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "gpt-5.3-codex-spark", "displayName": "Codex Spark", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } }
       ]
     },
     {
@@ -51,15 +52,15 @@
       "defaultModelId": "opencode/big-pickle",
       "supportsDynamicModels": true,
       "models": [
-        { "id": "opencode/big-pickle", "displayName": "OpenCode Big Pickle (Free)", "isDefault": true },
-        { "id": "opencode/gpt-5-nano", "displayName": "OpenCode GPT-5 Nano (Free)", "isDefault": false },
-        { "id": "opencode/kimi-k2.5-free", "displayName": "OpenCode Kimi K2.5 Free", "isDefault": false },
-        { "id": "opencode/minimax-m2.5-free", "displayName": "OpenCode MiniMax M2.5 Free", "isDefault": false },
+        { "id": "opencode/big-pickle", "displayName": "OpenCode Big Pickle (Free)" },
+        { "id": "opencode/gpt-5-nano", "displayName": "OpenCode GPT-5 Nano (Free)" },
+        { "id": "opencode/kimi-k2.5-free", "displayName": "OpenCode Kimi K2.5 Free" },
+        { "id": "opencode/minimax-m2.5-free", "displayName": "OpenCode MiniMax M2.5 Free" },
         // Meta API via opencode provider (https://api.meta.ai/v1)
-        { "id": "meta/muse-spark-1.1", "displayName": "Muse Spark 1.1 (Meta)", "isDefault": false },
-        { "id": "meta/muse-spark-1.2-contributor", "displayName": "Muse Spark 1.2 Contributor (Meta)", "isDefault": false },
-        { "id": "meta/muse-spark-1.3", "displayName": "Muse Spark 1.3 (Meta)", "isDefault": false },
-        { "id": "meta/muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor (Meta)", "isDefault": false }
+        { "id": "meta/muse-spark-1.1", "displayName": "Muse Spark 1.1 (Meta)" },
+        { "id": "meta/muse-spark-1.2-contributor", "displayName": "Muse Spark 1.2 Contributor (Meta)" },
+        { "id": "meta/muse-spark-1.3", "displayName": "Muse Spark 1.3 (Meta)" },
+        { "id": "meta/muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor (Meta)" }
       ]
     },
     {
@@ -69,10 +70,10 @@
       "defaultModelId": "gemini-2.5-pro",
       "supportsDynamicModels": false,
       "models": [
-        { "id": "gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro Preview", "isDefault": false },
-        { "id": "gemini-2.5-pro", "displayName": "Gemini 2.5 Pro", "isDefault": true },
-        { "id": "gemini-2.5-flash", "displayName": "Gemini 2.5 Flash", "isDefault": false },
-        { "id": "gemini-2.0-flash", "displayName": "Gemini 2.0 Flash", "isDefault": false }
+        { "id": "gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro Preview" },
+        { "id": "gemini-2.5-pro", "displayName": "Gemini 2.5 Pro" },
+        { "id": "gemini-2.5-flash", "displayName": "Gemini 2.5 Flash" },
+        { "id": "gemini-2.0-flash", "displayName": "Gemini 2.0 Flash" }
       ]
     },
     {
@@ -81,15 +82,23 @@
       "shortName": "Cu",
       "defaultModelId": "composer-2.5",
       "supportsDynamicModels": false,
+      "aliases": {
+        "composer-2": "composer-2.5",
+        "composer2": "composer-2.5",
+        "composer-2-fast": "composer-2.5",
+        "composer-2.5-fast": "composer-2.5",
+        "grok-4.5": "cursor-grok-4.5-high",
+        "grok-4.7": "grok-4.7-high"
+      },
       "models": [
-        { "id": "composer-2.5", "displayName": "Composer 2.5", "isDefault": true },
-        { "id": "grok-4.7-xhigh", "displayName": "Grok 4.7 Extra High", "isDefault": false },
-        { "id": "grok-4.7-high", "displayName": "Grok 4.7 High", "isDefault": false },
-        { "id": "grok-4.7-medium", "displayName": "Grok 4.7 Medium", "isDefault": false },
-        { "id": "grok-4.7-low", "displayName": "Grok 4.7 Low", "isDefault": false },
-        { "id": "cursor-grok-4.5-high", "displayName": "Grok 4.5 High", "isDefault": false },
-        { "id": "cursor-grok-4.5-medium", "displayName": "Grok 4.5 Medium", "isDefault": false },
-        { "id": "cursor-grok-4.5-low", "displayName": "Grok 4.5 Low", "isDefault": false }
+        { "id": "composer-2.5", "displayName": "Composer 2.5" },
+        { "id": "grok-4.7-xhigh", "displayName": "Grok 4.7 Extra High" },
+        { "id": "grok-4.7-high", "displayName": "Grok 4.7 High" },
+        { "id": "grok-4.7-medium", "displayName": "Grok 4.7 Medium" },
+        { "id": "grok-4.7-low", "displayName": "Grok 4.7 Low" },
+        { "id": "cursor-grok-4.5-high", "displayName": "Grok 4.5 High" },
+        { "id": "cursor-grok-4.5-medium", "displayName": "Grok 4.5 Medium" },
+        { "id": "cursor-grok-4.5-low", "displayName": "Grok 4.5 Low" }
       ]
     },
     {
@@ -99,10 +108,10 @@
       "defaultModelId": "muse-spark-1.3-contributor",
       "supportsDynamicModels": false,
       "models": [
-        { "id": "muse-spark-1.1", "displayName": "Muse Spark 1.1", "isDefault": false, "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "high" } },
-        { "id": "muse-spark-1.2-contributor", "displayName": "Muse Spark 1.2 Contributor", "isDefault": false, "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "high" } },
-        { "id": "muse-spark-1.3", "displayName": "Muse Spark 1.3", "isDefault": false, "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "high" } },
-        { "id": "muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor", "isDefault": true, "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "high" } }
+        { "id": "muse-spark-1.1", "displayName": "Muse Spark 1.1", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
+        { "id": "muse-spark-1.2-contributor", "displayName": "Muse Spark 1.2 Contributor", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
+        { "id": "muse-spark-1.3", "displayName": "Muse Spark 1.3", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
+        { "id": "muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } }
       ]
     }
   ]

@@ -7,7 +7,7 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-28.registry-deslop",
+  "revision": "2026-09-29.claude-alias-labels",
   "providers": [
     {
       "id": "claude",
@@ -19,8 +19,13 @@
         { "id": "fable", "displayName": "Claude Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
         { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "sonnet", "displayName": "Sonnet", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "haiku", "displayName": "Haiku", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
+        // `sonnet` / `haiku` are Claude CLI aliases for the newest model of the family; the CLI
+        // resolves them at launch. Labels name that model so the picker shows what they run.
+        // Kept (not folded into aliases) because saved conversations and Buddy profiles store them.
+        // Update the label when a newer model of the family ships.
+        { "id": "sonnet", "displayName": "Sonnet latest (5.5)", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "claude-haiku-4-5-20251001", "displayName": "Haiku 4.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "haiku", "displayName": "Haiku latest (4.5)", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
       ]
     },
     {

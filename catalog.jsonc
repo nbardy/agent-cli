@@ -7,7 +7,7 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-29.claude-three-models",
+  "revision": "2026-09-30.gpt-6.1-sol",
   "providers": [
     {
       "id": "claude",
@@ -32,6 +32,8 @@
       "defaultModelId": "gpt-6-sol",
       "supportsDynamicModels": false,
       "models": [
+        // Offered by codex-cli 0.159.0 (models_cache.json 2026-09-29).
+        { "id": "gpt-6.1-sol", "displayName": "GPT-6.1 Sol", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "low" } },
         { "id": "gpt-5.6-sol", "displayName": "GPT-5.6 Sol", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.6-terra", "displayName": "GPT-5.6 Terra", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.6-luna", "displayName": "GPT-5.6 Luna", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },

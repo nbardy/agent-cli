@@ -7,7 +7,7 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-29.claude-versioned-only",
+  "revision": "2026-09-29.claude-three-models",
   "providers": [
     {
       "id": "claude",
@@ -17,14 +17,12 @@
       "supportsDynamicModels": false,
       // CLI shorthands stored by older conversations and reported by imported sessions.
       "aliases": {
-        "sonnet": "claude-sonnet-5-5",
-        "haiku": "claude-haiku-4-5-20251001"
+        "sonnet": "claude-sonnet-5-5"
       },
       "models": [
-        { "id": "fable", "displayName": "Claude Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "fable", "displayName": "Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "claude-haiku-4-5-20251001", "displayName": "Haiku 4.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
       ]
     },
     {

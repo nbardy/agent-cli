@@ -1,4 +1,3 @@
-import type { ChildProcess } from 'node:child_process';
 import type {
   BuildOptions,
   CommandSpec,
@@ -93,8 +92,12 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   forkSessionId?: string;
   yolo?: boolean;
   debugRawEvents?: boolean;
-  /** Start a separate process group for group-scoped termination. The owner keeps the child referenced. */
-  detached?: boolean;
+  /**
+   * The execution's journal directory (journal.ts). Name one to let another
+   * process adopt the execution with `attachExecution`; absent, a private temp
+   * journal is used and removed when the turn ends.
+   */
+  journalDir?: string;
 };
 
 type CodexExecuteCommandRequest = BaseExecuteCommandRequest<'codex'> & {
@@ -196,16 +199,24 @@ export interface ExecuteCommandCompletion {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   sessionId: string;
-  spec: CommandSpec;
+  /** The process group died without an exit record: SIGKILLed from outside, not stopped. */
+  lost: boolean;
 }
 
-export interface ExecuteCommandHandle {
-  child: ChildProcess;
-  spec: CommandSpec;
+/** One journaled execution, followed from its journal (spawned here or adopted). */
+export interface ExecutionHandle {
+  /** The wrapper's pid, which is also its process group. */
+  pid: number;
+  journalDir: string;
   events: AsyncIterable<UnifiedAgentEvent>;
   sessionId: Promise<string>;
   completed: Promise<ExecuteCommandCompletion>;
+  /** Signal the execution's whole process group. */
   stop: (signal?: NodeJS.Signals) => void;
+}
+
+export interface ExecuteCommandHandle extends ExecutionHandle {
+  spec: CommandSpec;
 }
 
 export type ExecuteTurnRequest = ExecuteCommandRequest;

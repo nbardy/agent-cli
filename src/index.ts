@@ -40,7 +40,16 @@ export { CLAUDE_SUBAGENT_TOOL_NAMES } from './parsers/claude.ts';
 // Replays a recorded harness stream through the same parser executeCommand uses.
 export { createParser } from './parsers/index.ts';
 export type { HarnessParser } from './parsers/index.ts';
-export { CODEX_REASONING_LEVELS, runCommand, executeCommand, executeTurn } from './run.ts';
+export {
+  CODEX_REASONING_LEVELS,
+  runCommand,
+  attachExecution,
+  executeCommand,
+  executeTurn,
+} from './run.ts';
+// Journal inspection for an owner deciding what to adopt after a restart.
+export { executionState, signalGroup } from './journal.ts';
+export type { ExecutionState, ExitStatus } from './journal.ts';
 export type {
   RunOptions,
   RunResult,
@@ -48,6 +57,7 @@ export type {
   ExecuteCommandRequest,
   ExecuteCommandCompletion,
   ExecuteCommandHandle,
+  ExecutionHandle,
   ExecuteTurnRequest,
   ExecuteTurnEvent,
   ExecuteTurnCompletion,

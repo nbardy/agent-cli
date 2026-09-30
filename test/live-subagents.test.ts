@@ -141,7 +141,6 @@ describe('live sub-agent probe', { skip: !liveSubagentsEnabled }, () => {
           cwd,
           model,
           yolo: true,
-          detached: true,
           ...(debugRawEvents ? { debugRawEvents: true } : {}),
         });
 

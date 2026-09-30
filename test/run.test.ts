@@ -450,7 +450,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
     assert.ok(sawHelloDelta, 'expected assistant text delta from codex JSON stream');
   });
 
-  it('keeps a detached process group observable across delayed stdout events', async () => {
+  it('keeps a journaled process group observable across delayed stdout events', async () => {
     const turn = executeCommand({
       harness: 'codex',
       mode: 'conversation',
@@ -458,7 +458,6 @@ describe('executeCommand contract', { concurrency: true }, () => {
       cwd: workspace,
       model: 'gpt-5.3-codex',
       yolo: false,
-      detached: true,
     });
 
     const eventsPromise = collectEvents(turn.events);
@@ -566,7 +565,7 @@ describe('executeCommand contract', { concurrency: true }, () => {
       events.filter((event) => event.type === 'turn.complete').map((event) => event.reason),
       ['out_of_tokens']
     );
-    assert.throws(() => process.kill(turn.child.pid!, 0), { code: 'ESRCH' });
+    assert.throws(() => process.kill(turn.pid, 0), { code: 'ESRCH' });
   });
 
   it('treats conversation exit without turn.complete as error even with exit code 0', async () => {

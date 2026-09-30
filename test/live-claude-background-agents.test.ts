@@ -52,7 +52,6 @@ async function runTurn(
     cwd,
     model,
     yolo: true,
-    detached: true,
     ...(opts.resumeSessionId ? { resumeSessionId: opts.resumeSessionId } : {}),
   });
   const events: Timed[] = [];

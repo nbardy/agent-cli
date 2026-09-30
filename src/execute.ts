@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { createAsyncQueue } from './async-queue.ts';
 import {
   classifyError,
@@ -14,21 +17,34 @@ import { probeMcpServerStartup, requiresStartupProbe } from './mcp-startup.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
 import { createCodexNativeProgressProbe } from './native-progress.ts';
 import { type HarnessParser, createParser } from './parsers/index.ts';
-import { runCommand } from './process-runner.ts';
+import { buildCommand } from './build.ts';
+import {
+  type ExecutionRecord,
+  followJournal,
+  readExecutionRecord,
+  readPid,
+  signalGroup,
+  spawnJournaled,
+  writeExecutionRecord,
+} from './journal.ts';
+import { commandSpawnEnv } from './process-runner.ts';
+import { resolveBinary } from './resolve.ts';
 import type {
   CompletionReason,
   ExecuteCommandHandle,
   ExecuteCommandRequest,
-  StdoutStreamState,
+  ExecutionHandle,
   UnifiedAgentEvent,
 } from './runtime-types.ts';
 import { captureSessionIdFromJson, prepareSession } from './session.ts';
 import type { BuildOptions } from './types.ts';
 
 type Emit = (event: UnifiedAgentEvent) => void;
+/** What reading a journal needs from the request that started it. */
+type ParseContext = Pick<ExecutionRecord, 'harness' | 'mode' | 'debugRawEvents'>;
 
 function createStdoutProcessor(
-  request: ExecuteCommandRequest,
+  request: ParseContext,
   parse: HarnessParser,
   emit: Emit,
   updateSession: (json: unknown) => void,
@@ -121,7 +137,7 @@ function createStdoutProcessor(
 // child on one of those would abort a turn that was about to recover.
 const FATAL_STDERR_LINE = /^error:/i;
 
-function createStderrProcessor(request: ExecuteCommandRequest, emit: Emit) {
+function createStderrProcessor(request: ParseContext, emit: Emit) {
   let stderrBuffer = '';
   let debugTrailing = '';
   let lineTrailing = '';
@@ -158,7 +174,7 @@ function createStderrProcessor(request: ExecuteCommandRequest, emit: Emit) {
 }
 
 function silentExitError(
-  request: ExecuteCommandRequest,
+  request: ParseContext,
   exitCode: number | null,
   sawMeaningfulContent: boolean,
   stderrBuffer: string
@@ -172,8 +188,12 @@ function silentExitError(
   return `${request.harness} exited without a terminal turn.complete event${details}`;
 }
 
+/**
+ * Spawn one CLI turn as a journaled execution (journal.ts) and follow it. The
+ * turn's output is read back from its journal like any adopted one, so a
+ * process that starts reading later (`attachExecution`) takes exactly this path.
+ */
 export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHandle {
-  const queue = createAsyncQueue<UnifiedAgentEvent>();
   const canonicalHarness = canonicalizeHarness(request.harness);
   const yolo = request.yolo !== false;
   const codexFullAuto =
@@ -182,14 +202,124 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     canonicalHarness === 'codex' && 'webSearch' in request && request.webSearch === true;
   const bypassPermissions = yolo && !(canonicalHarness === 'codex' && codexFullAuto);
   const session = prepareSession(request);
+
+  const reasoningEffort = 'reasoningEffort' in request ? request.reasoningEffort : undefined;
+  const buildOptions: BuildOptions = {
+    model: request.model,
+    prompt: request.prompt,
+    sessionId: session.buildSessionId,
+    resume: session.resume,
+    fork: session.fork,
+    cwd: request.cwd,
+    bypassPermissions,
+    mcpServers: request.mcpServers,
+    extraArgs: [
+      ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto, codexWebSearch),
+      ...(request.extraArgs ?? []),
+    ],
+    ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude' || canonicalHarness === 'muse')
+      ? { reasoning: reasoningEffort }
+      : {}),
+  };
+  const spec = buildCommand(request.harness, buildOptions);
+  if (spec.stdin === 'pipe') {
+    throw new Error(`Harness "${request.harness}" keeps stdin open; a journaled execution cannot`);
+  }
+
+  // A caller that names no journal gets a private one, removed once the turn ends.
+  const ownsJournal = request.journalDir === undefined;
+  const dir = request.journalDir ?? mkdtempSync(path.join(tmpdir(), 'agent-cli-exec-'));
+  const record: ExecutionRecord = {
+    version: 1,
+    harness: request.harness,
+    mode: request.mode,
+    debugRawEvents: request.debugRawEvents === true,
+    sessionId: session.resolvedSessionId,
+    ownedPaths: spec.ownedPaths,
+    startedAt: new Date().toISOString(),
+  };
+  writeExecutionRecord(dir, record);
+  const [bin, ...args] = spec.argv;
+  let pid: number;
+  try {
+    pid = spawnJournaled(dir, resolveBinaryOrSelf(bin), args, {
+      cwd: request.cwd,
+      env: commandSpawnEnv(spec),
+      stdin: spec.stdin === 'prompt' && spec.prompt ? spec.prompt : '',
+    });
+  } catch (error) {
+    removeOwnedPaths(record);
+    if (ownsJournal) rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+
+  // Runner-enforced required MCP where the CLI would drop a failed server
+  // silently (cursor stdio; every harness for HTTP — see requiresStartupProbe).
+  const harnessConfig = getHarness(request.harness);
+  const requiredServers = Object.entries(request.mcpServers ?? {}).filter(
+    ([, server]) => server.required && requiresStartupProbe(harnessConfig, server)
+  );
+  const probe: StartupProbe =
+    requiredServers.length > 0
+      ? () =>
+          Promise.all(requiredServers.map(([name, server]) => probeMcpServerStartup(name, server))).then(
+            () => undefined
+          )
+      : null;
+
+  return { ...followExecution(dir, record, pid, { ownsJournal, probe }), spec };
+}
+
+/**
+ * Follow an execution another process started, from byte 0 of its journal:
+ * the same events, in the same order, that its spawner saw, then whatever it
+ * writes next. An execution that already ended replays and completes.
+ */
+export function attachExecution(dir: string): ExecutionHandle {
+  const record = readExecutionRecord(dir);
+  const pid = readPid(dir);
+  if (pid === null) throw new Error(`Execution journal ${dir} has no process`);
+  // The startup probe ran (or died) with the spawner; it is not repeated.
+  return followExecution(dir, record, pid, { ownsJournal: false, probe: null });
+}
+
+/** A required-MCP startup check that rejects with the failure message. */
+type StartupProbe = (() => Promise<void>) | null;
+
+function resolveBinaryOrSelf(bin: string): string {
+  // Cursor binary fallback: harness builds `agent` but older installs only have
+  // `cursor-agent`. An unresolvable binary is left to the wrapper, whose shell
+  // reports "not found" on stderr and exits 127.
+  try {
+    return resolveBinary(bin);
+  } catch {
+    return bin;
+  }
+}
+
+function removeOwnedPaths(record: ExecutionRecord): void {
+  // Temp config the harness wrote for this process only (muse's settings dir
+  // may hold a literal per-turn bearer token).
+  for (const owned of record.ownedPaths) rmSync(owned, { recursive: true, force: true });
+}
+
+function followExecution(
+  dir: string,
+  record: ExecutionRecord,
+  pid: number,
+  options: { ownsJournal: boolean; probe: StartupProbe }
+): ExecutionHandle {
+  const request = record;
+  const queue = createAsyncQueue<UnifiedAgentEvent>();
+  const canonicalHarness = canonicalizeHarness(record.harness);
   const parse = createParser(canonicalHarness);
 
-  let resolvedSessionId = session.resolvedSessionId;
+  let resolvedSessionId = record.sessionId;
   let completionReason: CompletionReason = 'success';
   let completeEventSeen = false;
   let turnStartedSeen = false;
   let stopRequested = false;
-  let stdoutStreamState: StdoutStreamState | null = null;
+  let ended = false;
   let nativeProgressProbe =
     canonicalHarness === 'codex' && resolvedSessionId
       ? createCodexNativeProgressProbe(resolvedSessionId)
@@ -202,11 +332,12 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
 
   const heartbeat = createHeartbeat(request.mode === 'conversation', (event) => emit(event), {
     nativeProgress: () => nativeProgressProbe?.poll() ?? null,
-    stdoutState: () => stdoutStreamState,
   });
 
-  // Bound once the child is spawned; out_of_tokens can only arrive from its output.
-  let stopForOutOfTokens = (): void => {};
+  const killGroup = (signal?: NodeJS.Signals): void => {
+    if (ended) return;
+    signalGroup(pid, signal ?? 'SIGTERM');
+  };
 
   const emit = (event: UnifiedAgentEvent): void => {
     if (event.type === 'turn.started') {
@@ -221,7 +352,7 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
       // Exhausted credits are terminal: codex prints its usage-limit line and
       // then idles ~4.5 s before exiting on its own. Stop it now. This is NOT a
       // user stop (stopRequested stays false), so the reason stays out_of_tokens.
-      if (isTerminalOutOfTokens(event.message)) stopForOutOfTokens();
+      if (isTerminalOutOfTokens(event.message)) killGroup();
     } else if (event.type === 'error' && completionReason === 'success') {
       completionReason = 'error';
     }
@@ -245,88 +376,50 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     }
   };
 
-  const reasoningEffort = 'reasoningEffort' in request ? request.reasoningEffort : undefined;
-  const buildOptions: BuildOptions = {
-    model: request.model,
-    prompt: request.prompt,
-    sessionId: session.buildSessionId,
-    resume: session.resume,
-    fork: session.fork,
-    cwd: request.cwd,
-    bypassPermissions,
-    mcpServers: request.mcpServers,
-    extraArgs: [
-      ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto, codexWebSearch),
-      ...(request.extraArgs ?? []),
-    ],
-    ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude' || canonicalHarness === 'muse')
-      ? { reasoning: reasoningEffort }
-      : {}),
-  };
-
   const stdout = createStdoutProcessor(request, parse, emit, updateSession, () =>
     heartbeat.markStdout()
   );
   const stderr = createStderrProcessor(request, emit);
-  const { child, spec, done } = runCommand(request.harness, {
-    ...buildOptions,
-    detached: request.detached === true,
-    onStdout: (chunk) => stdout.onChunk(chunk),
-    onStderr: (chunk) => stderr.onChunk(chunk),
-    onStdoutState: (state) => {
-      stdoutStreamState = state;
-    },
-  });
 
   heartbeat.start();
   if (resolvedSessionId) emit({ type: 'session.started', sessionId: resolvedSessionId });
   emit({ type: 'turn.started' });
 
-  const killChild = (signal?: NodeJS.Signals): void => {
-    if (child.exitCode !== null) return;
-    if (request.detached && child.pid != null) {
-      try {
-        process.kill(-child.pid, signal ?? 'SIGTERM');
-      } catch {}
-    } else {
-      child.kill(signal);
-    }
-  };
-
-  stopForOutOfTokens = () => killChild();
-
-  // Runner-enforced required MCP where the CLI would drop a failed server
-  // silently (cursor stdio; every harness for HTTP — see requiresStartupProbe).
-  // Runs alongside the CLI: a failed probe emits the startup error, kills the
-  // turn and forces reason 'error' even if the model already ran — a Buddy
-  // turn must never report success without its state tools.
+  // A failed required-MCP probe emits the startup error, kills the turn and
+  // forces reason 'error' even if the model already ran — a Buddy turn must
+  // never report success without its state tools.
   let mcpStartupFailure: string | undefined;
-  const harnessConfig = getHarness(request.harness);
-  const requiredServers = Object.entries(request.mcpServers ?? {}).filter(
-    ([, spec]) => spec.required && requiresStartupProbe(harnessConfig, spec)
-  );
-  const mcpStartupProbe: Promise<void> =
-    requiredServers.length > 0
-      ? Promise.all(requiredServers.map(([name, spec]) => probeMcpServerStartup(name, spec))).then(
-          () => undefined,
-          (error: unknown) => {
-            mcpStartupFailure = error instanceof Error ? error.message : String(error);
-            emit({ type: 'error', message: mcpStartupFailure });
-            killChild();
-          }
-        )
-      : Promise.resolve();
+  const mcpStartupProbe: Promise<void> = options.probe
+    ? options.probe().then(
+        () => undefined,
+        (error: unknown) => {
+          mcpStartupFailure = error instanceof Error ? error.message : String(error);
+          emit({ type: 'error', message: mcpStartupFailure });
+          killGroup();
+        }
+      )
+    : Promise.resolve();
 
   const stderrOutOfTokens = (): string | undefined => {
     const classified = classifyError(stderr.buffer().trim().split('\n').pop() ?? '');
     return classified.kind === 'out_of_tokens' ? classified.message : undefined;
   };
 
-  const completed = Promise.all([done, mcpStartupProbe])
-    .then(([{ exitCode, signal, spec: doneSpec }]) => {
+  const followed = followJournal(dir, {
+    onStdout: (chunk) => stdout.onChunk(chunk),
+    onStderr: (chunk) => stderr.onChunk(chunk),
+  });
+
+  const completed = Promise.all([followed, mcpStartupProbe])
+    .then(([end]) => {
+      ended = true;
       heartbeat.stop();
       stdout.flush();
       stderr.flush();
+      removeOwnedPaths(record);
+      if (options.ownsJournal) rmSync(dir, { recursive: true, force: true });
+      const { exitCode, signal } =
+        end.kind === 'exited' ? end.status : { exitCode: null, signal: null };
 
       let finalReason = completionReason;
       if (mcpStartupFailure) {
@@ -337,6 +430,14 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
         // exitCode === null here means "we stopped it for credits", not killed.
         if (completionReason === 'out_of_tokens') {
           finalReason = 'out_of_tokens';
+        } else if (end.kind === 'lost' && !stopRequested) {
+          // The wrapper died without recording an exit: its group was SIGKILLed
+          // from outside. Never a success, and distinguishable from a stop.
+          finalReason = 'killed';
+          emit({
+            type: 'error',
+            message: `${request.harness} execution was lost: its process group was killed without an exit record`,
+          });
         } else if (stopRequested || exitCode === null) {
           finalReason = 'killed';
         } else if (completionReason !== 'success') {
@@ -372,10 +473,11 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
         exitCode,
         signal,
         sessionId: resolvedSessionId,
-        spec: doneSpec,
+        lost: end.kind === 'lost',
       };
     })
     .catch((err) => {
+      ended = true;
       heartbeat.stop();
       emit({
         type: 'error',
@@ -388,15 +490,15 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     });
 
   return {
-    child,
-    spec,
+    pid,
+    journalDir: dir,
     events: queue.iterator,
     sessionId,
     completed,
     stop: (signal?: NodeJS.Signals) => {
       stopRequested = true;
       heartbeat.stop();
-      killChild(signal);
+      killGroup(signal);
     },
   };
 }

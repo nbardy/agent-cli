@@ -221,20 +221,16 @@ async function main(): Promise<void> {
       // Stdin EOF lifecycle: when our parent dies (for any reason, including
       // SIGKILL), the kernel closes its FDs and our stdin gets EOF. Treat
       // this as "parent is gone" and kill the entire child process group.
-      // Only active in piped mode — interactive TTY use is unaffected.
-      if (!process.stdin.isTTY) {
+      // Only active in piped mode — interactive TTY use is unaffected — and
+      // never when stdin WAS the request (`--input -`): it is already at EOF.
+      // That watcher killed its own turn at once when executions became
+      // journaled (always their own process group); before, `-pid` named no
+      // group for a non-detached child and the kill silently missed.
+      const stdinWasInput = rest.includes('--input') && rest[rest.indexOf('--input') + 1] === '-';
+      if (!process.stdin.isTTY && !stdinWasInput) {
         process.stdin.on('end', () => {
-          const pid = handle.child.pid;
-          if (pid != null && handle.child.exitCode === null) {
-            try {
-              process.kill(-pid, 'SIGTERM');
-            } catch {}
-            setTimeout(() => {
-              try {
-                process.kill(-pid, 'SIGKILL');
-              } catch {}
-            }, 3000);
-          }
+          handle.stop('SIGTERM');
+          setTimeout(() => handle.stop('SIGKILL'), 3000).unref();
         });
         process.stdin.resume();
       }

@@ -4,10 +4,13 @@
 // To add a model: add an entry to the provider's `models` array, then run
 // `pnpm --filter @unleashd/shared gen:catalog` in unleashd.
 // `defaultModelId` must match one `id` in `models`; `reasoning.defaultEffort` one of its levels.
+// `defaultEffort` is OUR policy (medium for every reasoning model), never the CLI's: do not copy
+// default_reasoning_level from codex's models_cache.json. gpt-6.1-sol shipped `low` that way on
+// 2026-09-30. Guard: server/test/conversation-config-domain.test.ts (unleashd).
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-30.latest-sol-default",
+  "revision": "2026-09-30.sol-6.1-medium-effort",
   "providers": [
     {
       "id": "claude",
@@ -39,8 +42,9 @@
         { "id": "gpt-5.4", "displayName": "GPT-5.4", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.4-mini", "displayName": "GPT-5.4 Mini", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-6-astra", "displayName": "GPT-6 Astra", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
-        // Offered by codex-cli 0.159.0 (models_cache.json 2026-09-29).
-        { "id": "gpt-6.1-sol", "displayName": "GPT-6.1 Sol", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "low" } },
+        // Offered by codex-cli 0.159.0 (models_cache.json 2026-09-29): levels are the cache's;
+        // the cache's default (low) is not ours.
+        { "id": "gpt-6.1-sol", "displayName": "GPT-6.1 Sol", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         // gpt-6-sol / gpt-6-luna: offered by codex-cli 0.156.1 (models_cache.json 2026-09-24).
         // Levels are what the cache reports, NOT the minimal..ultra list the older
         // entries carry: the cache offers no "minimal" for any model and no "ultra" for Luna.

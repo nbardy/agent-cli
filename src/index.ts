@@ -48,7 +48,7 @@ export {
   executeTurn,
 } from './run.ts';
 // Journal inspection for an owner deciding what to adopt after a restart.
-export { executionState, signalGroup } from './journal.ts';
+export { executionState, isOwnWrapper, signalGroup } from './journal.ts';
 export type { ExecutionState, ExitStatus } from './journal.ts';
 export type {
   RunOptions,

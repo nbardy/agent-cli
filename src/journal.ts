@@ -216,7 +216,8 @@ export function followJournal(
         finish();
         return resolve({ kind: 'exited', status });
       }
-      if (++ticks % LIVENESS_EVERY_TICKS === 0 && (pid === null || !isAlive(pid))) {
+      // Identity, not kill(pid, 0): a reused pid is alive but is not our wrapper.
+      if (++ticks % LIVENESS_EVERY_TICKS === 0 && (pid === null || !isOwnWrapper(pid, dir))) {
         const late = readExit(dir);
         finish();
         return resolve(late ? { kind: 'exited', status: late } : { kind: 'lost' });

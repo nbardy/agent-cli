@@ -21,6 +21,7 @@ import { buildCommand } from './build.ts';
 import {
   type ExecutionRecord,
   followJournal,
+  isOwnWrapper,
   readExecutionRecord,
   readPid,
   signalGroup,
@@ -335,7 +336,8 @@ function followExecution(
   });
 
   const killGroup = (signal?: NodeJS.Signals): void => {
-    if (ended) return;
+    // A lost wrapper's pid may belong to an unrelated group by now: never signal it.
+    if (ended || !isOwnWrapper(pid, dir)) return;
     signalGroup(pid, signal ?? 'SIGTERM');
   };
 

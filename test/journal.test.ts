@@ -140,4 +140,31 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     assert.equal(existsSync(path.join(dir, 'exit.json')), false);
     assert.equal(executionState(dir).kind, 'lost');
   });
+
+  // Review of P1 (2026-10-01): liveness was `kill(pid, 0)` and stop signalled `-pid`, so a
+  // lost wrapper whose pid the OS reused read as running forever, and stop killed the
+  // unrelated group that now owns the pid. Both now require the pid to still be our wrapper.
+  it('a lost wrapper whose pid was reused: reads as lost, and stop never signals the new owner', async () => {
+    const dir = path.join(root, 'reused');
+    const pid = await spawnFromDoomedParent(dir, 'hang', path.join(root, 'never'));
+    process.kill(-pid, 'SIGKILL');
+    while (isAlive(pid)) await new Promise((resolve) => setTimeout(resolve, 20));
+    const stranger = spawn('sleep', ['600'], { detached: true, stdio: 'ignore' });
+    try {
+      writeFileSync(path.join(dir, 'pid'), String(stranger.pid));
+      assert.equal(executionState(dir).kind, 'lost');
+      const adopted = attachExecution(dir);
+      const events = collect(adopted.events);
+      adopted.stop();
+      const completion = await adopted.completed;
+      await events;
+
+      assert.equal(completion.lost, true);
+      assert.equal(isAlive(stranger.pid!), true, 'the process that reused the pid is untouched');
+    } finally {
+      try {
+        process.kill(-stranger.pid!, 'SIGKILL');
+      } catch {}
+    }
+  });
 });

@@ -6,7 +6,16 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
 import { attachExecution } from '../src/execute.ts';
-import { executionState, isAlive } from '../src/journal.ts';
+import { executionProcess } from '../src/journal.ts';
+
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 import type { UnifiedAgentEvent } from '../src/runtime-types.ts';
 
 // The property the journal exists for: an execution outlives the process that
@@ -94,7 +103,7 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     const pid = await spawnFromDoomedParent(dir, 'go', release);
 
     // The spawner is dead; the execution is not.
-    assert.deepEqual(executionState(dir), { kind: 'running', pid });
+    assert.deepEqual(executionProcess(dir), { t: 'live', pid });
     const adopted = attachExecution(dir);
     assert.equal(adopted.pid, pid, 'the adopter follows the same process, not a new one');
     const events = collect(adopted.events);
@@ -105,9 +114,8 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     assert.deepEqual(texts, ['before;', 'after;'], 'output before and after the spawner died, once each, in order');
     assert.equal(completion.reason, 'success');
     assert.equal(completion.exitCode, 0);
-    assert.equal(completion.lost, false);
     assert.equal(completion.sessionId, 'journal-session');
-    assert.equal(executionState(dir).kind, 'exited');
+    assert.equal(executionProcess(dir).t, 'ended');
   });
 
   it('stop from an adopter kills the group and reads as killed, not lost', async () => {
@@ -117,10 +125,10 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     const events = collect(adopted.events);
     adopted.stop();
     const completion = await adopted.completed;
-    await events;
+    const errors = (await events).flatMap((e) => (e.type === 'error' ? [e.message] : []));
 
     assert.equal(completion.reason, 'killed');
-    assert.equal(completion.lost, false, 'the wrapper recorded the stop');
+    assert.ok(!errors.some((m) => /execution was lost/.test(m)), 'the wrapper recorded the stop');
     assert.equal(completion.signal, 'SIGTERM');
     assert.equal(isAlive(pid), false);
   });
@@ -134,11 +142,10 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     const completion = await adopted.completed;
     const errors = (await events).flatMap((e) => (e.type === 'error' ? [e.message] : []));
 
-    assert.equal(completion.lost, true);
     assert.equal(completion.reason, 'killed');
     assert.ok(errors.some((m) => /execution was lost/.test(m)), errors.join(' | '));
     assert.equal(existsSync(path.join(dir, 'exit.json')), false);
-    assert.equal(executionState(dir).kind, 'lost');
+    assert.equal(executionProcess(dir).t, 'ended');
   });
 
   // Review of P1 (2026-10-01): liveness was `kill(pid, 0)` and stop signalled `-pid`, so a
@@ -152,15 +159,14 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     const stranger = spawn('sleep', ['600'], { detached: true, stdio: 'ignore' });
     try {
       writeFileSync(path.join(dir, 'pid'), String(stranger.pid));
-      assert.equal(executionState(dir).kind, 'lost');
+      assert.equal(executionProcess(dir).t, 'ended');
       const adopted = attachExecution(dir);
       const events = collect(adopted.events);
       adopted.stop();
       const completion = await adopted.completed;
       await events;
 
-      assert.equal(completion.lost, true);
-      assert.equal(isAlive(stranger.pid!), true, 'the process that reused the pid is untouched');
+        assert.equal(isAlive(stranger.pid!), true, 'the process that reused the pid is untouched');
     } finally {
       try {
         process.kill(-stranger.pid!, 'SIGKILL');

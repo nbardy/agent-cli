@@ -92,11 +92,7 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   forkSessionId?: string;
   yolo?: boolean;
   debugRawEvents?: boolean;
-  /**
-   * The execution's journal directory (journal.ts). Name one to let another
-   * process adopt the execution with `attachExecution`; absent, a private temp
-   * journal is used and removed when the turn ends.
-   */
+  /** Journal dir (journal.ts) another process can `attachExecution`; absent = private temp. */
   journalDir?: string;
 };
 
@@ -199,8 +195,6 @@ export interface ExecuteCommandCompletion {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   sessionId: string;
-  /** The process group died without an exit record: SIGKILLed from outside, not stopped. */
-  lost: boolean;
 }
 
 /** One journaled execution, followed from its journal (spawned here or adopted). */

@@ -186,6 +186,18 @@ function silentExitError(
   return `${request.harness} exited without a terminal turn.complete event${details}`;
 }
 
+/**
+ * The journaled wrapper is a detached `/bin/sh`, so a binary missing from PATH is never a Node
+ * `spawn ENOENT`: the shell prints `sh: codex: command not found` (dash: `exec: codex: not found`)
+ * and exits 127. Classify that ONCE, here, and report it in the one canonical `spawn <bin> ENOENT`
+ * form the direct-spawn path produced, so consumers key on one message. The stderr must name the
+ * binary: a 127 from inside a running CLI (some script it ran) is not a missing agent.
+ */
+function missingBinaryError(bin: string, exitCode: number | null, stderr: string): string | null {
+  if (exitCode !== 127 || !stderr.includes(bin) || !/not found/i.test(stderr)) return null;
+  return `spawn ${bin} ENOENT`;
+}
+
 /** Spawn one CLI turn as a journaled execution (journal.ts) and follow it like an adopter. */
 export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHandle {
   const canonicalHarness = canonicalizeHarness(request.harness);
@@ -279,6 +291,7 @@ function followExecution(
   const queue = createAsyncQueue<UnifiedAgentEvent>();
   const canonicalHarness = canonicalizeHarness(request.harness);
   const parse = createParser(canonicalHarness);
+  const harnessBinary = getHarness(request.harness).binary;
 
   let resolvedSessionId = request.sessionId;
   let completionReason: CompletionReason = 'success';
@@ -401,6 +414,9 @@ function followExecution(
           });
         } else if (stopRequested || exitCode === null) {
           finalReason = 'killed';
+        } else if (missingBinaryError(harnessBinary, exitCode, stderr.buffer())) {
+          finalReason = 'error';
+          emit({ type: 'error', message: missingBinaryError(harnessBinary, exitCode, stderr.buffer())! });
         } else if (completionReason !== 'success') {
           finalReason = completionReason;
         } else if (request.mode === 'conversation' && exitCode !== 0 && stderrOutOfTokens()) {

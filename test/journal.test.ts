@@ -148,6 +148,44 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     assert.equal(executionProcess(dir).t, 'ended');
   });
 
+  // 2026-10-07 (unleashd Task task_01a11636): a live turn read as `lost` 1.3 s after spawn, 16 ms
+  // before the backend logged the SIGINT that caused it. The liveness probe runs `ps` with
+  // execFileSync, so `ps` is a child in the backend's process group; a terminal Ctrl+C reaches it
+  // there, kills it mid-call, and isOwnWrapper's catch reads "the probe failed" as "not our
+  // wrapper". The shim stands in for that SIGINT: a `ps` that dies of SIGINT. A probe that cannot
+  // answer is not evidence the wrapper is gone. Skipped until the phase-2 fix is approved.
+  it(
+    'a liveness probe that dies (ps killed by the Ctrl+C sent to the backend\'s group) never reads a live wrapper as lost',
+    { skip: process.env.RUN_PHASE2 ? false : 'phase 2 of unleashd task_01a11636: fails until liveness separates Unknown from Gone' },
+    async () => {
+      const dir = path.join(root, 'probe-interrupted');
+      const pid = await spawnFromDoomedParent(dir, 'hang', path.join(root, 'never'));
+      const adopted = attachExecution(dir);
+      const events = collect(adopted.events);
+      const shims = mkdtempSync(path.join(tmpdir(), 'agent-cli-ps-sigint-'));
+      writeFileSync(path.join(shims, 'ps'), '#!/bin/sh\nkill -INT $$\n');
+      chmodSync(path.join(shims, 'ps'), 0o755);
+      const pathBefore = process.env.PATH;
+      process.env.PATH = `${shims}:${pathBefore}`;
+      let settled = false;
+      void adopted.completed.then(() => (settled = true));
+      try {
+        // followJournal probes liveness every 20 ticks (about 1 s); give it two probes.
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        assert.equal(isAlive(pid), true, 'the wrapper is alive throughout');
+        assert.equal(settled, false, 'a live wrapper is still being followed, not settled as lost');
+      } finally {
+        process.env.PATH = pathBefore;
+        rmSync(shims, { recursive: true, force: true });
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {}
+        await adopted.completed;
+        await events;
+      }
+    }
+  );
+
   // Review of P1 (2026-10-01): liveness was `kill(pid, 0)` and stop signalled `-pid`, so a
   // lost wrapper whose pid the OS reused read as running forever, and stop killed the
   // unrelated group that now owns the pid. Both now require the pid to still be our wrapper.

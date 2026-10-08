@@ -36,6 +36,9 @@ export type {
 } from './types.ts';
 
 export { buildCommand } from './build.ts';
+// The env var an HTTP MCP header value rides in: a caller-owned hook in the same process (e.g. a
+// Claude PostToolUse command) authenticates with the same value without putting it in argv.
+export { mcpHeaderEnvName } from './mcp-encoding.ts';
 export { CLAUDE_SUBAGENT_TOOL_NAMES } from './parsers/claude.ts';
 // Replays a recorded harness stream through the same parser executeCommand uses.
 export { createParser } from './parsers/index.ts';

@@ -8,6 +8,7 @@ import {
   buildCommand,
   harnessMcpCapability,
   harnessSupportsMcp,
+  mcpHeaderEnvName,
 } from '../src/index.ts';
 import { createMuseParser } from '../src/parsers/muse.ts';
 
@@ -320,4 +321,14 @@ describe('MCP encoding', () => {
       { type: 'tool.use', name: 'mcp_tool', input: {} },
     ]);
   });
+});
+
+it('caller-owned native hooks share the HTTP MCP bearer env without putting it in argv', () => {
+  for (const harness of ['claude', 'codex'] as const) {
+    const spec = buildCommand(harness, { prompt: 'test', cwd: '/tmp', mcpServers: {
+      unleashd_buddy: { kind: 'http', url: 'http://127.0.0.1:1/mcp', headers: { Authorization: 'Bearer hook-test' } },
+    } });
+    assert.equal(spec.env[mcpHeaderEnvName('unleashd_buddy', 'Authorization')], 'Bearer hook-test');
+    assert.ok(!spec.argv.join(' ').includes('Bearer hook-test'));
+  }
 });

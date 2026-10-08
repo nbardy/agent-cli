@@ -328,7 +328,7 @@ it('caller-owned native hooks share the HTTP MCP bearer env without putting it i
     const spec = buildCommand(harness, { prompt: 'test', cwd: '/tmp', mcpServers: {
       unleashd_buddy: { kind: 'http', url: 'http://127.0.0.1:1/mcp', headers: { Authorization: 'Bearer hook-test' } },
     } });
-    assert.equal(spec.env[mcpHeaderEnvName('unleashd_buddy', 'Authorization')], 'Bearer hook-test');
+    assert.equal(spec.env?.[mcpHeaderEnvName('unleashd_buddy', 'Authorization')], 'Bearer hook-test');
     assert.ok(!spec.argv.join(' ').includes('Bearer hook-test'));
   }
 });

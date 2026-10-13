@@ -34,6 +34,8 @@ export function buildModeExtraArgs(
     switch (harness) {
       case 'claude':
         return ['-p', '--output-format', 'text'];
+      case 'pi':
+        return ['--print', '--no-session'];
       case 'gemini':
         return ['--output-format', 'text'];
       case 'codex':
@@ -71,6 +73,8 @@ export function buildModeExtraArgs(
       return ['--format', 'json'];
     case 'cursor':
       return [];
+    case 'pi':
+      return ['--mode', 'json'];
     case 'muse':
       return ['--json'];
   }

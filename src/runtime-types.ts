@@ -121,7 +121,7 @@ type MuseExecuteCommandRequest = BaseExecuteCommandRequest<'muse'> & {
   fullAuto?: never;
 };
 
-type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude' | 'muse'>> =
+type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude' | 'muse' | 'pi'>> =
   BaseExecuteCommandRequest<THarness> & {
     reasoningEffort?: never;
     fullAuto?: never;
@@ -130,6 +130,7 @@ type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' 
 export type ExecuteCommandRequest =
   | CodexExecuteCommandRequest
   | ClaudeExecuteCommandRequest
+  | (BaseExecuteCommandRequest<'pi'> & { reasoningEffort?: string; fullAuto?: never })
   | MuseExecuteCommandRequest
   | NoExtraExecuteCommandRequest<'opencode'>
   | NoExtraExecuteCommandRequest<'gemini'>

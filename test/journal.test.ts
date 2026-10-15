@@ -174,3 +174,43 @@ describe('journaled executions survive their spawner', { concurrency: false }, (
     }
   });
 });
+
+// 2026-10-14: a failed spawn threw before the wrapper's 'error' listener was attached, so the
+// next tick's 'error' went unhandled and killed the whole backend with every live turn. A
+// mode-000 cwd exists (passes the missing-cwd preflight) yet still fails spawn.
+describe('a failed spawn', () => {
+  it('throws to the caller and leaves the spawning process alive', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'agent-cli-failed-spawn-'));
+    const locked = path.join(root, 'locked');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(locked, { mode: 0o000 });
+    const journalUrl = new URL('../src/journal.ts', import.meta.url).href;
+    const script = `
+      const { spawnJournaled } = await import(${JSON.stringify(journalUrl)});
+      const dir = ${JSON.stringify(path.join(root, 'exec'))};
+      (await import('node:fs')).mkdirSync(dir);
+      try { spawnJournaled(dir, 'true', [], { cwd: ${JSON.stringify(locked)}, stdin: '' }); }
+      catch (e) { console.log('threw: ' + e.message); }
+      setTimeout(() => console.log('alive'), 50);`;
+    const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script]);
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (out += d));
+    const code = await new Promise((resolve) => child.on('exit', resolve));
+    chmodSync(locked, 0o700);
+    rmSync(root, { recursive: true, force: true });
+    assert.equal(code, 0, out);
+    assert.match(out, /threw: /);
+    assert.match(out, /alive/);
+  });
+
+  it('names a missing working directory instead of /bin/sh', async () => {
+    const { spawnJournaled } = await import('../src/journal.ts');
+    const dir = mkdtempSync(path.join(tmpdir(), 'agent-cli-missing-cwd-'));
+    assert.throws(
+      () => spawnJournaled(dir, 'true', [], { cwd: path.join(dir, 'gone'), stdin: '' }),
+      /Working directory does not exist: .*gone/
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

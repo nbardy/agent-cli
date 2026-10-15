@@ -75,6 +75,10 @@ export function spawnJournaled(
   args: readonly string[],
   options: { cwd?: string; env?: NodeJS.ProcessEnv; stdin: string }
 ): number {
+  // A missing cwd makes spawn fail as "spawn /bin/sh ENOENT", naming the wrong path. Name the cwd.
+  if (options.cwd !== undefined && !fs.statSync(options.cwd, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`Working directory does not exist: ${options.cwd}`);
+  }
   fs.writeFileSync(file(dir, 'stdin'), options.stdin, { mode: 0o600 });
   fs.writeFileSync(file(dir, 'stdout'), '', { mode: 0o600 });
   fs.writeFileSync(file(dir, 'stderr'), '', { mode: 0o600 });
@@ -84,10 +88,13 @@ export function spawnJournaled(
     stdio: 'ignore',
     ...(options.env ? { env: options.env } : {}),
   });
+  // Listen BEFORE the pid check: a failed spawn emits 'error' on the next tick, and the throw
+  // below used to skip this line, so that 'error' went unhandled and killed the whole backend
+  // with every live turn (2026-10-14, missing cwd). Guard: journal.test.ts "failed spawn".
+  child.on('error', () => undefined);
   if (child.pid === undefined) throw new Error(`Could not start the execution wrapper for ${bin}`);
   fs.writeFileSync(file(dir, 'pid'), String(child.pid), { mode: 0o600 });
   child.unref();
-  child.on('error', () => undefined);
   return child.pid; // pid written in spawn's tick: no reader sees the process without it
 }
 

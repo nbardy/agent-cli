@@ -10,7 +10,7 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-30.sol-6.1-medium-effort",
+  "revision": "2026-10-08.haiku-5.5",
   "providers": [
     {
       "id": "claude",
@@ -25,7 +25,8 @@
       "models": [
         { "id": "fable", "displayName": "Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "claude-haiku-5-5", "displayName": "Haiku 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
       ]
     },
     {

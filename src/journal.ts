@@ -35,17 +35,29 @@ export interface ExecutionRecord {
 /** The process behind a journal: the only view of it any reader keeps. */
 export type ExecutionProcess = { t: 'unstarted' } | { t: 'live'; pid: number } | { t: 'ended' };
 
-type ExitStatus = { readonly exitCode: number | null; readonly signal: NodeJS.Signals | null };
+type ExitStatus = {
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly commandMissing: boolean;
+};
 
 const readAsync = promisify(fs.read);
 const file = (dir: string, name: string) => path.join(dir, name);
 
 // $1 = journal dir, the rest = argv. `: TERM INT` (not '') keeps the CLI's dispositions default.
+// Pattern: fix-guards (docs/patterns.md#fix-guards)
+// Exit 127 + provider stderr mislabelled a nested tool failure as a missing agent. Only the
+// wrapper's lookup can establish that; persist it for adoption. Guard: launch-classification.test.ts.
 const WRAPPER = `trap : TERM INT
 d="$1"; shift
+missing=false
+if command -v "$1" >/dev/null 2>&1; then
 "$@" <"$d/stdin" >>"$d/stdout" 2>>"$d/stderr"
 s=$?
-printf '{"status":%d}\\n' "$s" >"$d/exit.tmp" && mv "$d/exit.tmp" "$d/exit.json"`;
+else
+s=127; missing=true
+fi
+printf '{"status":%d,"commandMissing":%s}\\n' "$s" "$missing" >"$d/exit.tmp" && /bin/mv "$d/exit.tmp" "$d/exit.json"`;
 
 export function writeExecutionRecord(dir: string, record: ExecutionRecord): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -120,16 +132,20 @@ export function readPid(dir: string): number | null {
 
 function readExit(dir: string): ExitStatus | null {
   try {
-    return parseExit((JSON.parse(fs.readFileSync(file(dir, 'exit.json'), 'utf8')) as { status: number }).status);
+    return parseExit(JSON.parse(fs.readFileSync(file(dir, 'exit.json'), 'utf8')) as ExitRecord);
   } catch {
     return null;
   }
 }
 
-function parseExit(status: number): ExitStatus {
-  if (status < 128) return { exitCode: status, signal: null };
+type ExitRecord = { status: number; commandMissing?: boolean };
+
+function parseExit({ status, commandMissing: missing }: ExitRecord): ExitStatus {
+  // Older journals lack launch evidence; never reconstruct it from provider-authored stderr.
+  const commandMissing = missing === true;
+  if (status < 128) return { exitCode: status, signal: null, commandMissing };
   const name = Object.entries(constants.signals).find(([, n]) => n === status - 128)?.[0];
-  return { exitCode: null, signal: (name as NodeJS.Signals | undefined) ?? null };
+  return { exitCode: null, signal: (name as NodeJS.Signals | undefined) ?? null, commandMissing };
 }
 
 // Pattern: async-liveness (docs/patterns.md#async-liveness)
@@ -269,7 +285,7 @@ export function followJournal(
   };
   const exitStatus = async () => {
     try {
-      return parseExit(JSON.parse(await fsp.readFile(file(dir, 'exit.json'), 'utf8')).status);
+      return parseExit(JSON.parse(await fsp.readFile(file(dir, 'exit.json'), 'utf8')) as ExitRecord);
     } catch {
       return null;
     }

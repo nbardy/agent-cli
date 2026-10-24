@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import type { Readable } from 'node:stream';
 import { buildCommand } from './build.ts';
-import { resolveBinary } from './resolve.ts';
+import { resolveCommandBinary } from './resolve.ts';
 import type { RunOptions, RunResult } from './runtime-types.ts';
 import type { CommandSpec } from './types.ts';
 
@@ -53,20 +53,20 @@ export function runCommand(
 ): { child: ChildProcess; spec: CommandSpec; done: Promise<RunResult> } {
   const spec = buildCommand(harness, options);
   const [bin, ...args] = spec.argv;
+  const env = commandSpawnEnv(spec);
   // Cursor binary fallback: harness now builds `agent` but older installs
-  // only have `cursor-agent`. Resolve through resolveBinary which probes
+  // only have `cursor-agent`. Resolve through the common launch lookup which probes
   // `agent` → `cursor-agent` fallback; on spawn we use the resolved path
   // so ENOENT never surfaces, but spec.argv stays canonical (`agent`).
   let effectiveBin = bin;
   try {
-    effectiveBin = resolveBinary(bin);
+    effectiveBin = resolveCommandBinary(bin, options.cwd ?? process.cwd(), env ?? process.env);
   } catch {
     // let spawn handle ENOENT with its own error path
   }
   const useCallbacks = !!options.onStdout || !!options.onStderr;
   // Harness-provided env is an overlay. Replacing process.env here would
   // drop PATH, credentials, and provider configuration from the child.
-  const env = commandSpawnEnv(spec);
   const child = spawn(effectiveBin, args, {
     cwd: options.cwd,
     detached: options.detached === true,

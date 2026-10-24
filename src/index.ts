@@ -85,4 +85,4 @@ export {
 export { buildMuseMcpConfigDir, museConfigRoot } from './muse-mcp-settings.ts';
 export { probeMcpServerStartup } from './mcp-startup.ts';
 export type { MuseMcpConfigDir } from './muse-mcp-settings.ts';
-export { resolveBinary, resolveBinaryAsync } from './resolve.ts';
+export { resolveBinary } from './resolve.ts';

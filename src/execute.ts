@@ -28,7 +28,7 @@ import {
   writeExecutionRecord,
 } from './journal.ts';
 import { commandSpawnEnv } from './process-runner.ts';
-import { resolveBinary } from './resolve.ts';
+import { resolveCommandBinary } from './resolve.ts';
 import type {
   CompletionReason,
   ExecuteCommandHandle,
@@ -186,18 +186,6 @@ function silentExitError(
   return `${request.harness} exited without a terminal turn.complete event${details}`;
 }
 
-/**
- * The journaled wrapper is a detached `/bin/sh`, so a binary missing from PATH is never a Node
- * `spawn ENOENT`: the shell prints `sh: codex: command not found` (dash: `exec: codex: not found`)
- * and exits 127. Classify that ONCE, here, and report it in the one canonical `spawn <bin> ENOENT`
- * form the direct-spawn path produced, so consumers key on one message. The stderr must name the
- * binary: a 127 from inside a running CLI (some script it ran) is not a missing agent.
- */
-function missingBinaryError(bin: string, exitCode: number | null, stderr: string): string | null {
-  if (exitCode !== 127 || !stderr.includes(bin) || !/not found/i.test(stderr)) return null;
-  return `spawn ${bin} ENOENT`;
-}
-
 /** Spawn one CLI turn as a journaled execution (journal.ts) and follow it like an adopter. */
 export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHandle {
   const canonicalHarness = canonicalizeHarness(request.harness);
@@ -240,17 +228,18 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
   const record: ExecutionRecord = { version: 1, harness, mode, debugRawEvents, sessionId, ownedPaths, startedAt };
   writeExecutionRecord(dir, record);
   const [bin, ...args] = spec.argv;
-  // Cursor builds `agent`, older installs only have `cursor-agent`; an unresolvable binary is
-  // left to the wrapper's shell, which reports "not found" and exits 127.
+  const env = commandSpawnEnv(spec);
+  // Cursor builds `agent`, older installs only have `cursor-agent`. The wrapper verifies
+  // discovery in the actual launch environment, including a removal after this lookup.
   let resolved = bin;
   try {
-    resolved = resolveBinary(bin);
+    resolved = resolveCommandBinary(bin, request.cwd ?? process.cwd(), env ?? process.env);
   } catch {}
   let pid: number;
   try {
     pid = spawnJournaled(dir, resolved, args, {
       cwd: request.cwd,
-      env: commandSpawnEnv(spec),
+      env,
       stdin: spec.stdin === 'prompt' && spec.prompt ? spec.prompt : '',
     });
   } catch (error) {
@@ -414,9 +403,9 @@ function followExecution(
           });
         } else if (stopRequested || exitCode === null) {
           finalReason = 'killed';
-        } else if (missingBinaryError(harnessBinary, exitCode, stderr.buffer())) {
+        } else if (end.kind === 'exited' && end.status.commandMissing) {
           finalReason = 'error';
-          emit({ type: 'error', message: missingBinaryError(harnessBinary, exitCode, stderr.buffer())! });
+          emit({ type: 'error', message: `spawn ${harnessBinary} ENOENT` });
         } else if (completionReason !== 'success') {
           finalReason = completionReason;
         } else if (request.mode === 'conversation' && exitCode !== 0 && stderrOutOfTokens()) {

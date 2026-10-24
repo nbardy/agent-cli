@@ -703,9 +703,9 @@ describe('cross-cutting', () => {
     assert.throws(() => buildCommand('unknown-harness', {}), /Unknown harness/);
   });
 
-  it('listHarnesses returns all six', () => {
+  it('listHarnesses returns all seven', () => {
     const harnesses = listHarnesses();
-    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'cursor', 'gemini', 'muse', 'opencode']);
+    assert.deepStrictEqual(harnesses.sort(), ['claude', 'codex', 'cursor', 'gemini', 'muse', 'opencode', 'pi']);
   });
 });
 
@@ -996,8 +996,12 @@ describe('bypassPermissions coverage', () => {
   // permission prompt, with no TTY to answer it. An empty bypass list is
   // indistinguishable from "this harness needs no flag", which is why it went
   // unnoticed — assert every harness actually emits something.
+  // Pi has no permission prompts (tools run unasked), so there is nothing to bypass. A new
+  // harness joins this set only for the same reason, never to silence the check.
+  const NO_PERMISSION_SYSTEM = new Set(['pi']);
   it('every harness emits at least one bypass flag', () => {
     const missing = listHarnesses().filter((harness) => {
+      if (NO_PERMISSION_SYSTEM.has(harness)) return false;
       const off = buildCommand(harness, { prompt: 'test' }).argv;
       const on = buildCommand(harness, { prompt: 'test', bypassPermissions: true }).argv;
       return on.length === off.length;

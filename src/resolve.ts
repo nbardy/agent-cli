@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 
 /**
  * Cache of resolved binary paths. Module-level for process lifetime caching.
@@ -37,6 +37,27 @@ export function resolveBinary(name: string): string {
     } catch {
       // try fallback
     }
+  }
+  throw new Error(`Binary not found on PATH: ${name}`);
+}
+
+/**
+ * Async twin of resolveBinary for callers that can await (boot audit: 8 serial `which` spawns
+ * blocked the event loop). Same cache, same cursor fallbacks, same error.
+ */
+export async function resolveBinaryAsync(name: string): Promise<string> {
+  const cached = cache.get(name);
+  if (cached) return cached;
+  for (const candidate of [name, ...(CURSOR_FALLBACKS[name] ?? [])]) {
+    const p = await new Promise<string>((resolve) =>
+      execFile('which', [candidate], { encoding: 'utf-8' }, (err, out) =>
+        resolve(err ? '' : out.trim())
+      )
+    );
+    if (!p) continue;
+    cache.set(name, p);
+    if (candidate !== name) cache.set(candidate, p);
+    return p;
   }
   throw new Error(`Binary not found on PATH: ${name}`);
 }

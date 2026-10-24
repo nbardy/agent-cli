@@ -45,7 +45,15 @@ export { createParser } from './parsers/index.ts';
 export type { HarnessParser } from './parsers/index.ts';
 export { CODEX_REASONING_LEVELS, runCommand, attachExecution, executeCommand, executeTurn } from './run.ts';
 // Journal inspection for an owner deciding what to adopt after a restart.
-export { executionProcess, killExecution } from './journal.ts';
+export {
+  executionProcess,
+  executionWrapperAlive,
+  isKnownOwnWrapper,
+  killExecution,
+  readPid,
+  trustSpawnedWrapper,
+  verifyExecutions,
+} from './journal.ts';
 export type { ExecutionProcess } from './journal.ts';
 export type {
   RunOptions,
@@ -77,4 +85,4 @@ export {
 export { buildMuseMcpConfigDir, museConfigRoot } from './muse-mcp-settings.ts';
 export { probeMcpServerStartup } from './mcp-startup.ts';
 export type { MuseMcpConfigDir } from './muse-mcp-settings.ts';
-export { resolveBinary } from './resolve.ts';
+export { resolveBinary, resolveBinaryAsync } from './resolve.ts';

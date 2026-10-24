@@ -10,8 +10,20 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-09-30.sol-6.1-medium-effort",
+  "revision": "2026-10-12.muse-wonder-1.0",
   "providers": [
+    {
+      "id": "pi",
+      "displayName": "SoL-Pi",
+      "shortName": "Pi",
+      "defaultModelId": "openai-codex/gpt-6.1-sol",
+      "supportsDynamicModels": true,
+      "models": [
+        { "id": "anthropic/claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["off", "minimal", "low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "openai-codex/gpt-6.1-sol", "displayName": "GPT-6.1 Sol", "reasoning": { "levels": ["off", "minimal", "low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "meta/muse-wonder-1.0", "displayName": "Muse Wonder 1.0", "reasoning": { "levels": ["off", "minimal", "low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
+      ]
+    },
     {
       "id": "claude",
       "displayName": "Claude",
@@ -25,7 +37,8 @@
       "models": [
         { "id": "fable", "displayName": "Fable 5.1", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
         { "id": "claude-opus-5-5", "displayName": "Opus 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
-        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
+        { "id": "claude-sonnet-5-5", "displayName": "Sonnet 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } },
+        { "id": "claude-haiku-5-5", "displayName": "Haiku 5.5", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max"], "defaultEffort": "medium" } }
       ]
     },
     {
@@ -119,7 +132,9 @@
         { "id": "muse-spark-1.1", "displayName": "Muse Spark 1.1", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
         { "id": "muse-spark-1.2-contributor", "displayName": "Muse Spark 1.2 Contributor", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
         { "id": "muse-spark-1.3", "displayName": "Muse Spark 1.3", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
-        { "id": "muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } }
+        { "id": "muse-spark-1.3-contributor", "displayName": "Muse Spark 1.3 Contributor", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
+        { "id": "muse-wonder-1.0", "displayName": "Muse Wonder 1.0", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } },
+        { "id": "muse-wonder-full-1.0", "displayName": "Muse Wonder Full 1.0", "reasoning": { "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "ultra"], "defaultEffort": "medium" } }
       ]
     }
   ]

@@ -32,6 +32,7 @@ export function probeMcpServerStartup(name: string, spec: McpServerSpec): Promis
  * so a dead URL or rejected token must fail the turn on every harness.
  */
 export function requiresStartupProbe(config: HarnessConfig, spec: McpServerSpec): boolean {
+  if (config.guardsRequiredMcpStartup) return false;
   switch (spec.kind) {
     case 'stdio':
       return config.probeRequiredMcpStartup === true;

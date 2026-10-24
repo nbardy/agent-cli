@@ -46,6 +46,7 @@ export function prepareSession(request: ExecuteCommandRequest): PreparedSession 
 export function captureSessionIdFromJson(harness: Harness, json: unknown): string | undefined {
   const obj = asObject(json);
   if (!obj) return undefined;
+  if (harness === 'pi' && obj.type === 'session') return asString(obj.id);
   if (harness === 'codex' && obj.type === 'thread.started') {
     return asString(obj.thread_id);
   }

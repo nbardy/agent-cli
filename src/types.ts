@@ -11,7 +11,7 @@
 // =============================================================================
 
 /** Adding a harness = adding one entry here + one config in harnesses/ */
-export type Harness = 'claude' | 'codex' | 'opencode' | 'gemini' | 'cursor' | 'muse';
+export type Harness = 'claude' | 'codex' | 'opencode' | 'gemini' | 'cursor' | 'muse' | 'pi';
 export type GeminiAlias = `gemini${number}`;
 export type HarnessName = Harness | GeminiAlias;
 
@@ -173,6 +173,8 @@ export interface HarnessConfig {
    * dead URL must fail the turn before the model runs anywhere.
    */
   readonly probeRequiredMcpStartup?: true;
+  /** The harness waits for its actual native tools before a provider request. */
+  readonly guardsRequiredMcpStartup?: true;
   readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
 
   /** Flag name for model selection (e.g. '--model' or '-m') */

@@ -795,7 +795,7 @@ describe('reasoning', () => {
 describe('model loop', () => {
   // All known model IDs from both codebases
   const ALL_MODELS: Record<string, string[]> = {
-    claude: ['fable', 'opus', 'sonnet', 'haiku'],
+    claude: ['claude-fable-5-2', 'claude-fable-5-1', 'fable', 'opus', 'sonnet', 'haiku'],
     codex: [
       'gpt-5.6-sol',
       'gpt-5.6-terra',

@@ -31,7 +31,9 @@
     "manual:subagents:codex:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner raw",
     "manual:subagents:codex:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness codex --runner shared",
     "manual:subagents:claude:raw": "node manual_tests/capture-live-run.mjs --scenario subagents --harness claude --runner raw",
-    "manual:subagents:claude:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness claude --runner shared"
+    "manual:subagents:claude:shared": "node manual_tests/capture-live-run.mjs --scenario subagents --harness claude --runner shared",
+    "gen:catalog": "node scripts/gen-model-catalog.mjs",
+    "check:catalog": "node scripts/gen-model-catalog.mjs --check"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

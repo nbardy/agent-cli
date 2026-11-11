@@ -1,6 +1,7 @@
 // Provider/model registry: the one data file. unleashd generates its typed
 // catalog from this (shared/scripts/gen-catalog.ts); nothing reads it at runtime.
 //
+// agent-cli also generates its parser catalog with `pnpm gen:catalog` (checked by its tests).
 // To add a model: add an entry to the provider's `models` array, then run
 // `pnpm --filter @unleashd/shared gen:catalog` in unleashd.
 // `defaultModelId` must match one `id` in `models`; `reasoning.defaultEffort` one of its levels.

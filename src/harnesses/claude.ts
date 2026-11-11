@@ -186,7 +186,10 @@ function claudeCapabilities(caps: TurnCapabilities): CapabilityEncoding {
   const settings = {
     autoMemoryEnabled: false,
     permissions: {
-      blockReadsOutsideWorkingDirectories: true,
+      // Run 3: the read block disables sandbox auto-allow and inspects shell syntax before
+      // the broad Bash grant. Shell reads were already advisory; the sandbox is its boundary.
+      // Guard: capabilities.test.ts checkout settings (all other turn kinds keep the read block).
+      blockReadsOutsideWorkingDirectories: !(caps.files.t === 'write' && caps.files.shell === 'on'),
       blockWritesOutsideWorkingDirectories: true,
       allow: [...files.allow, ...web],
     },

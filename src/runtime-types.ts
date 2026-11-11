@@ -194,9 +194,9 @@ export type UnifiedAgentEvent =
   // when the harness reports real numbers; silence means it reports none.
   | { type: 'usage'; usage: TurnUsage }
   | { type: 'error'; message: string }
-  // `text` carries the complete final message when the harness reports one
-  // separately from its incremental deltas (muse does). It is NOT a substitute
-  // for accumulating text.delta -- it is absent on harnesses that only stream.
+  // `text` is the final assistant message, separated from progress by createParser.
+  // UI history still accumulates text.delta; consumers of answers use this snapshot.
+  // Optional for failure events and older callers that construct events themselves.
   | { type: 'turn.complete'; reason: CompletionReason; text?: string }
   | { type: 'stderr'; text: string };
 

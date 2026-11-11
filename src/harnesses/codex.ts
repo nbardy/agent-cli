@@ -152,7 +152,9 @@ const CODEX_FILES: {
     readonly shell: Enforcement;
   };
 } = {
-  read: () => ({ args: ['-s', 'read-only'], shell: CODEX_SHELL_STAYS }),
+  read: () => ({ args: ['-s', 'read-only'], shell: advisory(
+    'a read-only shell is available for reading files; it cannot write and has no network'
+  ) }),
   write: (f) => ({
     args: [
       '-s',

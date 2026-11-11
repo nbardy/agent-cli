@@ -259,11 +259,11 @@ const CLAUDE_HEAD = [
   '--permission-prompts',
   'none',
 ];
-const settings = (allow: string[], extra: Record<string, unknown> = {}) =>
+const settings = (allow: string[], extra: Record<string, unknown> = {}, shell = false) =>
   JSON.stringify({
     autoMemoryEnabled: false,
     permissions: {
-      blockReadsOutsideWorkingDirectories: true,
+      blockReadsOutsideWorkingDirectories: !shell,
       blockWritesOutsideWorkingDirectories: true,
       allow,
     },
@@ -304,7 +304,7 @@ const CLAUDE: Record<Kind, string[]> = {
         allowUnsandboxedCommands: false,
         filesystem: { denyWrite: ['/x/refs'] },
       },
-    }),
+    }, true),
   ],
   judge: [
     ...CLAUDE_HEAD,
@@ -416,6 +416,22 @@ const CODEX: Record<Kind, string[]> = {
 };
 
 describe('a capability set, per harness and expedition turn kind', () => {
+  it('Claude checkout lets the sandbox auto-approve compound commands instead of syntax-checking them against the read block', () => {
+    const argv = argvOf('claude', 'checkout');
+    const config = JSON.parse(argv[argv.indexOf('--settings') + 1]);
+    assert.equal(config.permissions.blockReadsOutsideWorkingDirectories, false);
+    assert.ok(config.permissions.allow.includes('Bash'));
+    assert.equal(config.permissions.blockWritesOutsideWorkingDirectories, true);
+    assert.equal(config.sandbox.enabled, true);
+    assert.equal(config.sandbox.failIfUnavailable, true);
+    assert.equal(config.sandbox.autoAllowBashIfSandboxed, true);
+    assert.equal(config.sandbox.allowUnsandboxedCommands, false);
+    assert.deepEqual(config.sandbox.filesystem.denyWrite, ['/x/refs']);
+    for (const kind of ['seat', 'judge', 'leader'] as const) {
+      const other = argvOf('claude', kind);
+      assert.equal(JSON.parse(other[other.indexOf('--settings') + 1]).permissions.blockReadsOutsideWorkingDirectories, true);
+    }
+  });
   for (const kind of Object.keys(KINDS) as Kind[]) {
     it(`claude ${kind}: exact argv, no bypass anywhere`, () => {
       const argv = argvOf('claude', kind);

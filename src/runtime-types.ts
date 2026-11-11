@@ -5,6 +5,7 @@ import type {
   Harness,
   HarnessName,
   McpServerSpec,
+  TurnCapabilities,
 } from './types.ts';
 
 export interface RunOptions extends BuildOptions {
@@ -91,6 +92,14 @@ type BaseExecuteCommandRequest<THarness extends HarnessName> = {
   resumeSessionId?: string;
   forkSessionId?: string;
   yolo?: boolean;
+  /**
+   * What this turn may do (types.ts `TurnCapabilities`). Absent: the harness's default
+   * invocation, byte for byte as before (`yolo` decides). Present: the harness's own flags for
+   * the set replace the permission bypass and `yolo` is not read; the request must then carry no
+   * `mcpServers`, `extraArgs`, `fullAuto` or `webSearch` (each would widen or override the set,
+   * and Claude's two `--settings` would not merge), or `executeCommand` throws.
+   */
+  capabilities?: TurnCapabilities;
   debugRawEvents?: boolean;
   /** Journal dir (journal.ts) another process can `attachExecution`; absent = private temp. */
   journalDir?: string;

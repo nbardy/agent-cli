@@ -1,3 +1,4 @@
+import { unenforced } from '../capabilities.ts';
 import { buildMuseMcpConfigDir } from '../muse-mcp-settings.ts';
 import type { HarnessConfig } from '../types.ts';
 
@@ -32,6 +33,8 @@ import type { HarnessConfig } from '../types.ts';
  * `run.terminal.failed` before any model step.
  */
 export const museConfig: HarnessConfig = {
+  // No capability mapping yet: a capability turn here runs unrestricted, reported advisory.
+  capabilities: unenforced('muse'),
   mcpCapability: 'required',
   binary: 'muse',
   baseCmd: ['exec'],

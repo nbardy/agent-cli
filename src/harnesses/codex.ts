@@ -1,6 +1,15 @@
+import { ENFORCED, advisory } from '../capabilities.ts';
 import { emulateForkCodex } from '../fork-emulation.ts';
 import { type McpKindEncoders, encodeMcpServers, headersViaEnv } from '../mcp-encoding.ts';
-import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
+import type {
+  CapabilityEncoding,
+  Enforcement,
+  HarnessConfig,
+  McpEncoding,
+  McpServerSpec,
+  TurnCapabilities,
+  TurnFiles,
+} from '../types.ts';
 
 /**
  * Codex reads MCP config as TOML `-c key=value` fragments. TOML string values
@@ -68,6 +77,125 @@ function codexMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): Mcp
   return { args: entries.flatMap(([, args]) => args), env, ownedPaths: [] };
 }
 
+// ---- Capability sets (types.ts `TurnCapabilities`) ----
+//
+// Verified 2026-11-11 against codex-cli 0.159.0 and 0.160.0: every flag below is in
+// `codex exec --help`, every feature name in `codex features list` (`--disable` rejects an
+// unknown name, so a renamed feature fails the turn at start instead of being skipped), and every
+// `-c` key and value parses (`codex debug prompt-input -c …` rejects a bad key's type or variant
+// and renders the model-visible input without calling a model).
+// - `--ignore-user-config` drops `~/.codex/config.toml`: its MCP servers (the owner's held
+//   computer-use, node_repl and others), plugins, `sandbox_mode = "danger-full-access"`, notify
+//   hook and hook trust. Login still comes from CODEX_HOME. It also drops the configured default
+//   model and effort, so a capability turn runs on the model and effort its request names.
+// - `--ignore-rules` drops user and project execpolicy rules, which could allow a command out of
+//   the sandbox. `approval_policy = "never"`: a sandbox denial goes back to the model as a
+//   failed command, never to an approval nobody would give.
+// - The sandbox confines writes (read-only, or workspace-write = the cwd only: TMPDIR and /tmp
+//   excluded) and the shell's network. It does not confine reads: Codex reads files through its
+//   shell, so the shell stays on even when the set says `off` (advisory, below).
+// - `project_doc_max_bytes = 0` drops the repository's AGENTS.md (prompt-input: gone).
+//   Nothing drops `$CODEX_HOME/AGENTS.md`, the owner's global file: only moving CODEX_HOME would,
+//   and that moves the login and the session files the server ingests. The first real run's
+//   prompt began with it (3,057 characters).
+// - multi_agent and multi_agent_v2 are disabled, but prompt-input still shows Codex's
+//   multi-agent role text with both off, so the tools' absence is not observable here.
+const CODEX_ALWAYS_OFF = [
+  'multi_agent',
+  'multi_agent_v2',
+  'apps',
+  'plugins',
+  'hooks',
+  'browser_use',
+  'browser_use_external',
+  'in_app_browser',
+  'computer_use',
+  'in_app_local_automation',
+] as const;
+const CODEX_WEB = {
+  off: 'disabled',
+  on: 'live',
+} as const satisfies Record<TurnCapabilities['web'], string>;
+const CODEX_GLOBAL_INSTRUCTIONS =
+  "codex always loads the owner's $CODEX_HOME/AGENTS.md; only a different CODEX_HOME skips it, which would also move its login and sessions";
+const CODEX_INSTRUCTIONS: {
+  readonly [K in TurnCapabilities['instructions']]: {
+    readonly args: readonly string[];
+    readonly report: Enforcement;
+  };
+} = {
+  none: {
+    args: ['-c', 'project_doc_max_bytes=0'],
+    report: advisory(`the repository's AGENTS.md is off, but ${CODEX_GLOBAL_INSTRUCTIONS}`),
+  },
+  project: { args: [], report: advisory(CODEX_GLOBAL_INSTRUCTIONS) },
+};
+const CODEX_READS = advisory(
+  "codex's sandbox confines writes and network, not reads: its shell can read the whole disk"
+);
+const CODEX_SHELL_STAYS = advisory(
+  'codex reads files only through its shell, so the shell stays on, inside the sandbox (no writes outside its directory, no network)'
+);
+const CODEX_FILES: {
+  readonly [K in TurnFiles['t']]: (f: Extract<TurnFiles, { t: K }>) => {
+    readonly args: readonly string[];
+    readonly shell: Enforcement;
+  };
+} = {
+  read: () => ({ args: ['-s', 'read-only'], shell: CODEX_SHELL_STAYS }),
+  write: (f) => ({
+    args: [
+      '-s',
+      'workspace-write',
+      '-c',
+      'sandbox_workspace_write.network_access=false',
+      '-c',
+      'sandbox_workspace_write.exclude_tmpdir_env_var=true',
+      '-c',
+      'sandbox_workspace_write.exclude_slash_tmp=true',
+    ],
+    shell: CODEX_SHELL[f.shell],
+  }),
+};
+const CODEX_SHELL: { readonly [S in Extract<TurnFiles, { t: 'write' }>['shell']]: Enforcement } =
+  {
+    off: CODEX_SHELL_STAYS,
+    on: ENFORCED,
+  };
+
+function codexCapabilities(caps: TurnCapabilities): CapabilityEncoding {
+  const files = (
+    CODEX_FILES[caps.files.t] as (f: TurnFiles) => ReturnType<(typeof CODEX_FILES)['read']>
+  )(caps.files);
+  const instructions = CODEX_INSTRUCTIONS[caps.instructions];
+  return {
+    t: 'enforcing',
+    args: [
+      '--ignore-user-config',
+      '--ignore-rules',
+      '-c',
+      'approval_policy="never"',
+      ...files.args,
+      '-c',
+      `web_search="${CODEX_WEB[caps.web]}"`,
+      ...instructions.args,
+      ...CODEX_ALWAYS_OFF.flatMap((feature) => ['--disable', feature]),
+    ],
+    report: {
+      reads: CODEX_READS,
+      writes: ENFORCED,
+      shell: files.shell,
+      web: ENFORCED,
+      agents: advisory(
+        "multi_agent and multi_agent_v2 are disabled, but codex still describes spawn_agent in its prompt, so the tools' absence is not verified"
+      ),
+      schedule: ENFORCED,
+      mcp: ENFORCED,
+      instructions: instructions.report,
+    },
+  };
+}
+
 /**
  * Codex CLI harness config.
  *
@@ -119,4 +247,5 @@ export const codexConfig: HarnessConfig = {
   // verbatim from unleashd's buddyCodexMcpArgs); byte-for-byte output shape
   // is pinned by test/mcp.test.ts.
   mcp: (servers) => codexMcpEncoding(servers),
+  capabilities: codexCapabilities,
 };

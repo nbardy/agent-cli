@@ -1,4 +1,13 @@
-import type { Harness, HarnessConfig, HarnessName, McpCapability } from '../types.ts';
+import { reportOf } from '../capabilities.ts';
+import type {
+  CapabilityEncoding,
+  CapabilityReport,
+  Harness,
+  HarnessConfig,
+  HarnessName,
+  McpCapability,
+  TurnCapabilities,
+} from '../types.ts';
 import { claudeConfig } from './claude.ts';
 import { codexConfig } from './codex.ts';
 import { cursorConfig } from './cursor.ts';
@@ -55,6 +64,23 @@ export function listHarnesses(): Harness[] {
 export function harnessSupportsMcp(name: HarnessName | string): boolean {
   return getHarness(name).mcpCapability !== 'none';
 }
+
+/** The harness's own flags for a capability set (types.ts `TurnCapabilities`). */
+export function encodeCapabilities(
+  name: HarnessName | string,
+  caps: TurnCapabilities
+): CapabilityEncoding {
+  return getHarness(name).capabilities(caps);
+}
+
+/**
+ * Which capabilities `name` enforces for `caps`, and which it can only be told: what a launch
+ * preview shows before anything runs. Pure; nothing is spawned.
+ */
+export const capabilityReport = (
+  name: HarnessName | string,
+  caps: TurnCapabilities
+): CapabilityReport => reportOf(encodeCapabilities(name, caps));
 
 /** Distinguishes best-effort injection from enforceable, fail-closed MCP. */
 export function harnessMcpCapability(name: HarnessName | string): McpCapability {

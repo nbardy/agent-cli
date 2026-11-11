@@ -1,3 +1,4 @@
+import { unenforced } from '../capabilities.ts';
 import { type McpKindEncoders, encodeMcpServers } from '../mcp-encoding.ts';
 import type { HarnessConfig, McpEncoding, McpServerSpec } from '../types.ts';
 
@@ -70,6 +71,8 @@ function opencodeMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): 
 }
 
 export const opencodeConfig: HarnessConfig = {
+  // No capability mapping yet: a capability turn here runs unrestricted, reported advisory.
+  capabilities: unenforced('opencode'),
   binary: 'opencode',
   baseCmd: ['run'],
   // `opencode run --auto` = "auto-approve permissions that are not explicitly

@@ -1,3 +1,4 @@
+import { unenforced } from '../capabilities.ts';
 import { buildCursorMcpPlugin } from '../cursor-mcp-plugin.ts';
 import type { HarnessConfig } from '../types.ts';
 
@@ -31,6 +32,8 @@ import type { HarnessConfig } from '../types.ts';
  * with `--mode ask` (read-only).
  */
 export const cursorConfig: HarnessConfig = {
+  // No capability mapping yet: a capability turn here runs unrestricted, reported advisory.
+  capabilities: unenforced('cursor'),
   mcpCapability: 'required',
   probeRequiredMcpStartup: true,
   binary: 'agent',

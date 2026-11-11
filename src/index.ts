@@ -33,9 +33,18 @@ export type {
   McpHttpServer,
   McpEncoding,
   McpCapability,
+  TurnCapabilities,
+  TurnFiles,
+  CapabilityName,
+  CapabilityReport,
+  CapabilityEncoding,
+  Enforcement,
 } from './types.ts';
+export { CAPABILITY_NAMES } from './types.ts';
 
 export { buildCommand } from './build.ts';
+// The command a turn would spawn, without spawning it (an argv a caller can show or pin).
+export { turnCommand } from './execute.ts';
 export { PI_RESTRICTED_FLAGS } from './harnesses/pi.ts';
 // The env var an HTTP MCP header value rides in: a caller-owned hook in the same process (e.g. a
 // Claude PostToolUse command) authenticates with the same value without putting it in argv.
@@ -77,6 +86,7 @@ export type {
   CompletionReason,
 } from './run.ts';
 export {
+  capabilityReport,
   getHarness,
   harnessSupportsMcp,
   harnessMcpCapability,

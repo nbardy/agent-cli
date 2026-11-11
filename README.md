@@ -18,6 +18,22 @@ operation within this turn. One operation can observe several children, so
 replay keys are `(child id, operationId)`. Missing IDs do not imply replay safety.
 Parent turn completion does not imply native child completion.
 
+## Turn capabilities
+
+A request may carry `capabilities` (`TurnCapabilities`): what that one turn may do, whatever its
+harness. Files are a sum (`read` roots, or `write` one directory, the cwd, with `reads` and an
+optional shell inside it), plus `web`, `instructions` (`none` | `project`: never the user-level
+files) and three fields that are always off (`agents`, `schedule`, `mcp`). Each harness config
+maps the set to its own flags (`HarnessConfig.capabilities`); `capabilityReport(harness, caps)`
+says, per capability, `enforced` or `advisory(reason)`, without spawning anything. Claude and
+Codex are mapped (see the comments in `src/harnesses/claude.ts` and `codex.ts` for what each flag
+holds and how it was verified); every other harness runs unrestricted and reports each capability
+advisory. A request with a set takes no `mcpServers`, `extraArgs`, `fullAuto` or `webSearch`.
+
+A request without a set builds exactly the argv it built before sets existed:
+`test/capabilities.test.ts` pins it. `turnCommand(request)` returns the command a turn would spawn
+without spawning it.
+
 ## Token usage
 
 Harnesses that report provider-counted tokens emit a `usage` event carrying

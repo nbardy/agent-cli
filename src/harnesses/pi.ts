@@ -1,3 +1,4 @@
+import { unenforced } from '../capabilities.ts';
 import { buildPiMcpExtension } from '../pi-mcp.ts';
 import type { HarnessConfig } from '../types.ts';
 
@@ -9,6 +10,8 @@ export const PI_RESTRICTED_FLAGS = [
 // Pi owns model auth, sessions and codemode. The pinned SoL-Pi package changes
 // its tools/context through public extensions, never a second agent runner.
 export const piConfig: HarnessConfig = {
+  // No capability mapping yet: a capability turn here runs unrestricted, reported advisory.
+  capabilities: unenforced('pi'),
   binary: 'sol-pi',
   baseCmd: [],
   bypassFlags: [],

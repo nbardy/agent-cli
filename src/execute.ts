@@ -11,7 +11,7 @@ import {
   stripAnsi,
   summarizeRawStdout,
 } from './diagnostics.ts';
-import { canonicalizeHarness, getHarness } from './harnesses/index.ts';
+import { canonicalizeHarness, encodeCapabilities, getHarness } from './harnesses/index.ts';
 import { createHeartbeat } from './heartbeat.ts';
 import { probeMcpServerStartup, requiresStartupProbe } from './mcp-startup.ts';
 import { buildModeExtraArgs } from './mode-args.ts';
@@ -36,8 +36,14 @@ import type {
   ExecutionHandle,
   UnifiedAgentEvent,
 } from './runtime-types.ts';
-import { captureSessionIdFromJson, prepareSession } from './session.ts';
-import type { BuildOptions, McpServerSpec } from './types.ts';
+import { type PreparedSession, captureSessionIdFromJson, prepareSession } from './session.ts';
+import type {
+  BuildOptions,
+  CapabilityEncoding,
+  CommandSpec,
+  Harness,
+  McpServerSpec,
+} from './types.ts';
 
 type Emit = (event: UnifiedAgentEvent) => void;
 
@@ -186,16 +192,105 @@ function silentExitError(
   return `${request.harness} exited without a terminal turn.complete event${details}`;
 }
 
-/** Spawn one CLI turn as a journaled execution (journal.ts) and follow it like an adopter. */
-export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHandle {
-  const canonicalHarness = canonicalizeHarness(request.harness);
+/** How a turn's permissions are chosen: the harness's unattended default, or a capability set. */
+type Access =
+  | { readonly t: 'harness-default' }
+  | { readonly t: 'limited'; readonly encoding: CapabilityEncoding };
+
+/**
+ * κ for a capability set: a request that carries one takes nothing that would widen or override
+ * it, and a writable directory is the turn's own cwd. Thrown, never dropped.
+ */
+function accessOf(request: ExecuteCommandRequest): Access {
+  const caps = request.capabilities;
+  if (caps === undefined) return { t: 'harness-default' };
+  const conflicts = [
+    ...(Object.keys(request.mcpServers ?? {}).length > 0 ? ['mcpServers'] : []),
+    ...((request.extraArgs ?? []).length > 0 ? ['extraArgs'] : []),
+    ...('fullAuto' in request && request.fullAuto ? ['fullAuto'] : []),
+    ...('webSearch' in request && request.webSearch ? ['webSearch'] : []),
+  ];
+  if (conflicts.length > 0)
+    throw new Error(
+      `A turn with a capability set takes no ${conflicts.join(', ')}: the set alone says what it may do`
+    );
+  if (caps.files.t === 'write' && path.resolve(caps.files.dir) !== path.resolve(request.cwd))
+    throw new Error(
+      `A capability set's writable directory must be the turn's cwd (${caps.files.dir} is not ${request.cwd})`
+    );
+  return { t: 'limited', encoding: encodeCapabilities(request.harness, caps) };
+}
+
+/** The permission half of a turn's argv. */
+type Permissions = {
+  readonly yolo: boolean;
+  readonly bypassPermissions: boolean;
+  readonly codexFullAuto: boolean;
+  readonly codexWebSearch: boolean;
+  /** Placed after the mode args, before the caller's `extraArgs`. */
+  readonly args: readonly string[];
+};
+/** Today's invocation: `yolo` (default on) bypasses permissions; codex `fullAuto` sandboxes. */
+function harnessDefault(request: ExecuteCommandRequest, harness: Harness): Permissions {
   const yolo = request.yolo !== false;
-  const codexFullAuto =
-    canonicalHarness === 'codex' && 'fullAuto' in request && request.fullAuto === true;
+  const codexFullAuto = harness === 'codex' && 'fullAuto' in request && request.fullAuto === true;
   const codexWebSearch =
-    canonicalHarness === 'codex' && 'webSearch' in request && request.webSearch === true;
-  const bypassPermissions = yolo && !(canonicalHarness === 'codex' && codexFullAuto);
-  const session = prepareSession(request);
+    harness === 'codex' && 'webSearch' in request && request.webSearch === true;
+  return {
+    yolo,
+    bypassPermissions: yolo && !(harness === 'codex' && codexFullAuto),
+    codexFullAuto,
+    codexWebSearch,
+    args: [],
+  };
+}
+const ENCODED: {
+  readonly [K in CapabilityEncoding['t']]: (
+    e: Extract<CapabilityEncoding, { t: K }>,
+    request: ExecuteCommandRequest,
+    harness: Harness
+  ) => Permissions;
+} = {
+  // The set's flags replace every bypass (no `--dangerously-*`, no Claude yolo mode args).
+  enforcing: (e) => ({
+    yolo: false,
+    bypassPermissions: false,
+    codexFullAuto: false,
+    codexWebSearch: false,
+    args: e.args,
+  }),
+  // No mapping: the ordinary invocation; the report says every capability is advisory.
+  unenforced: (_e, request, harness) => harnessDefault(request, harness),
+};
+const PERMISSIONS: {
+  readonly [K in Access['t']]: (
+    a: Extract<Access, { t: K }>,
+    request: ExecuteCommandRequest,
+    harness: Harness
+  ) => Permissions;
+} = {
+  'harness-default': (_a, request, harness) => harnessDefault(request, harness),
+  limited: (a, request, harness) =>
+    (ENCODED[a.encoding.t] as (e: CapabilityEncoding, r: ExecuteCommandRequest, h: Harness) => Permissions)(
+      a.encoding,
+      request,
+      harness
+    ),
+};
+
+/**
+ * The command one turn spawns. Pure for every request except an emulated fork, whose session
+ * preparation copies the source session file (session.ts); `executeCommand` spawns exactly this.
+ */
+export function turnCommand(
+  request: ExecuteCommandRequest,
+  session: PreparedSession = prepareSession(request)
+): CommandSpec {
+  const canonicalHarness = canonicalizeHarness(request.harness);
+  const access = accessOf(request);
+  const permissions = (
+    PERMISSIONS[access.t] as (a: Access, r: ExecuteCommandRequest, h: Harness) => Permissions
+  )(access, request, canonicalHarness);
 
   const reasoningEffort = 'reasoningEffort' in request ? request.reasoningEffort : undefined;
   const buildOptions: BuildOptions = {
@@ -205,17 +300,31 @@ export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHa
     resume: session.resume,
     fork: session.fork,
     cwd: request.cwd,
-    bypassPermissions,
+    bypassPermissions: permissions.bypassPermissions,
     mcpServers: request.mcpServers,
     extraArgs: [
-      ...buildModeExtraArgs(canonicalHarness, request.mode, yolo, request.cwd, codexFullAuto, codexWebSearch),
+      ...buildModeExtraArgs(
+        canonicalHarness,
+        request.mode,
+        permissions.yolo,
+        request.cwd,
+        permissions.codexFullAuto,
+        permissions.codexWebSearch
+      ),
+      ...permissions.args,
       ...(request.extraArgs ?? []),
     ],
     ...(reasoningEffort && (canonicalHarness === 'codex' || canonicalHarness === 'claude' || canonicalHarness === 'muse' || canonicalHarness === 'pi')
       ? { reasoning: reasoningEffort }
       : {}),
   };
-  const spec = buildCommand(request.harness, buildOptions);
+  return buildCommand(request.harness, buildOptions);
+}
+
+/** Spawn one CLI turn as a journaled execution (journal.ts) and follow it like an adopter. */
+export function executeCommand(request: ExecuteCommandRequest): ExecuteCommandHandle {
+  const session = prepareSession(request);
+  const spec = turnCommand(request, session);
   if (spec.stdin === 'pipe') {
     throw new Error(`Harness "${request.harness}" keeps stdin open; a journaled execution cannot`);
   }

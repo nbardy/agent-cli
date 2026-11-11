@@ -1,3 +1,4 @@
+import { unenforced } from '../capabilities.ts';
 import { emulateForkGemini } from '../fork-emulation.ts';
 import type { HarnessConfig } from '../types.ts';
 
@@ -20,6 +21,8 @@ import type { HarnessConfig } from '../types.ts';
  * reference before adding an encoder; do not guess `--mcp-config`.
  */
 export const geminiConfig: HarnessConfig = {
+  // No capability mapping yet: a capability turn here runs unrestricted, reported advisory.
+  capabilities: unenforced('gemini'),
   mcpCapability: 'none',
   binary: 'gemini',
   baseCmd: [],

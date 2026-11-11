@@ -127,6 +127,84 @@ export interface McpEncoding {
 }
 
 // =============================================================================
+// Turn capabilities — what one turn may do, whatever its harness
+// =============================================================================
+
+/**
+ * The files a turn may touch: a sum, so a shell can only exist inside a writable directory.
+ *
+ * read:   read `roots` (and its own cwd); write nothing; no shell.
+ * write:  read and write `dir`, which must be the turn's cwd; read `reads` too; a shell
+ *         inside `dir` when `shell` is `on` (no network for it either way).
+ *
+ * Roots are directories (a harness may only grant directories).
+ */
+export type TurnFiles =
+  | { readonly t: 'read'; readonly roots: readonly string[] }
+  | {
+      readonly t: 'write';
+      readonly dir: string;
+      readonly reads: readonly string[];
+      readonly shell: 'off' | 'on';
+    };
+
+/**
+ * Everything one turn may do. A caller that passes this gives up the harness's default
+ * (unattended, permissions bypassed) invocation: each harness turns it into its own flags and
+ * reports, per capability, whether the harness enforces it or can only be told
+ * (`capabilityReport`). No field is optional; `agents`, `schedule` and `mcp` have one value
+ * today, so a turn with a capability set never spawns agents, schedules or triggers work, or
+ * reaches an MCP server.
+ *
+ * `instructions`: which instruction files the harness loads on its own. `none`: neither the
+ * user-level (global) instructions and memory nor the repository's. `project`: the
+ * repository's only, never the user's.
+ */
+export interface TurnCapabilities {
+  readonly files: TurnFiles;
+  readonly web: 'off' | 'on';
+  readonly instructions: 'none' | 'project';
+  readonly agents: 'off';
+  readonly schedule: 'off';
+  readonly mcp: 'none';
+}
+
+/** The capabilities a report covers. `reads` and `writes` split `files`: a harness may
+ * confine one and not the other. */
+export const CAPABILITY_NAMES = [
+  'reads',
+  'writes',
+  'shell',
+  'web',
+  'agents',
+  'schedule',
+  'mcp',
+  'instructions',
+] as const;
+export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+
+/** Whether the harness itself holds a turn to a capability, or can only be told it. */
+export type Enforcement =
+  | { readonly t: 'enforced' }
+  | { readonly t: 'advisory'; readonly reason: string };
+export type CapabilityReport = { readonly [K in CapabilityName]: Enforcement };
+
+/**
+ * How one harness expresses a capability set.
+ *
+ * enforcing:   these args replace the harness's permission bypass; `report` says what they hold.
+ * unenforced:  the harness has no mapping: the turn runs as an ordinary (bypassed) turn and every
+ *              capability is advisory for `reason`. Never silent: the report carries it.
+ */
+export type CapabilityEncoding =
+  | {
+      readonly t: 'enforcing';
+      readonly args: readonly string[];
+      readonly report: CapabilityReport;
+    }
+  | { readonly t: 'unenforced'; readonly reason: string };
+
+// =============================================================================
 // Harness config — pure data describing CLI syntax
 // =============================================================================
 
@@ -176,6 +254,12 @@ export interface HarnessConfig {
   /** The harness waits for its actual native tools before a provider request. */
   readonly guardsRequiredMcpStartup?: true;
   readonly mcp?: (servers: Readonly<Record<string, McpServerSpec>>) => McpEncoding;
+
+  /**
+   * Turn a capability set into this CLI's own flags (capabilities.ts). Every harness answers:
+   * one without a mapping returns `unenforced` with its reason, never an empty encoding.
+   */
+  readonly capabilities: (caps: TurnCapabilities) => CapabilityEncoding;
 
   /** Flag name for model selection (e.g. '--model' or '-m') */
   readonly modelFlag: string;

@@ -135,7 +135,8 @@ export interface McpEncoding {
  *
  * read:   read `roots` (and its own cwd); write nothing; no shell.
  * write:  read and write `dir`, which must be the turn's cwd; read `reads` too; a shell
- *         inside `dir` when `shell` is `on` (no network for it either way).
+ *         inside `dir` when `shell` is `on` (no network for it either way); `git` names the
+ *         metadata outside `dir` a commit on `dir`'s branch writes.
  *
  * Roots are directories (a harness may only grant directories).
  */
@@ -146,7 +147,26 @@ export type TurnFiles =
       readonly dir: string;
       readonly reads: readonly string[];
       readonly shell: 'off' | 'on';
+      readonly git: TurnGit;
     };
+
+/**
+ * Git metadata a `write` turn may write outside `dir`.
+ *
+ * none:     `dir` is not a linked worktree (or nothing commits there).
+ * worktree: `dir` is a linked worktree whose git directory lives in another repository's `.git`.
+ *           `dirs` are exactly what `git commit` on its own branch writes: the worktree's own git
+ *           directory (index, HEAD), the object store, and the directories holding its branch's
+ *           ref and reflog. Never the repository's config or hooks.
+ *
+ * Why it exists: the second real expedition run (2026-11-11) had a Codex checkout call that could
+ * not commit, because `workspace-write` makes only the cwd writable and a linked worktree's
+ * `index.lock` is in `<repo>/.git/worktrees/<name>/` ("Unable to create .../index.lock: Operation
+ * not permitted"); its work was left uncommitted and its judge failed it.
+ */
+export type TurnGit =
+  | { readonly t: 'none' }
+  | { readonly t: 'worktree'; readonly dirs: readonly string[] };
 
 /**
  * Everything one turn may do. A caller that passes this gives up the harness's default

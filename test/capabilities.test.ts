@@ -209,13 +209,27 @@ const KINDS = {
   // A `tree: checkout` call: its worktree read-write with a shell; web granted on here.
   checkout: {
     cwd: '/x/run/tree',
-    caps: caps({ t: 'write', dir: '/x/run/tree', reads: ['/x/refs'], shell: 'on' }, 'on', 'project'),
+    caps: caps(
+      {
+        t: 'write',
+        dir: '/x/run/tree',
+        reads: ['/x/refs'],
+        shell: 'on',
+        git: { t: 'worktree', dirs: ['/repo/.git/worktrees/tree', '/repo/.git/objects'] },
+      },
+      'on',
+      'project'
+    ),
   },
   judge: { cwd: '/x/run/work', caps: caps({ t: 'read', roots: ['/x/refs'] }, 'off', 'none') },
   // A leader wake: the expedition directory to read, its draft folder (inside it) to write.
   leader: {
     cwd: '/x/drafts/1',
-    caps: caps({ t: 'write', dir: '/x/drafts/1', reads: ['/x'], shell: 'off' }, 'off', 'none'),
+    caps: caps(
+      { t: 'write', dir: '/x/drafts/1', reads: ['/x'], shell: 'off', git: { t: 'none' } },
+      'off',
+      'none'
+    ),
   },
 } as const;
 type Kind = keyof typeof KINDS;
@@ -368,7 +382,18 @@ const CODEX: Record<Kind, string[]> = {
     ...CODEX_OFF,
     '-',
   ],
-  checkout: [...codexHead('/x/run/tree'), ...WORKSPACE_WRITE, '-c', 'web_search="live"', ...CODEX_OFF, '-'],
+  // A linked worktree's commit metadata is writable too (types.ts TurnGit): without it the second
+  // real run's Codex checkout could not create index.lock and its work stayed uncommitted.
+  checkout: [
+    ...codexHead('/x/run/tree'),
+    ...WORKSPACE_WRITE,
+    '-c',
+    'sandbox_workspace_write.writable_roots=["/repo/.git/worktrees/tree","/repo/.git/objects"]',
+    '-c',
+    'web_search="live"',
+    ...CODEX_OFF,
+    '-',
+  ],
   judge: [
     ...codexHead('/x/run/work'),
     '-s',
@@ -439,6 +464,9 @@ describe('the enforced / advisory report', () => {
       instructions: 'advisory',
     });
     assert.match(seat.instructions.t === 'advisory' ? seat.instructions.reason : '', /AGENTS\.md/);
+    // Regression (second real run, 2026-11-11): a call with multi_agent{,_v2} disabled still
+    // started a sub-agent through collaboration.spawn_agent. The report must say it is not held.
+    assert.match(seat.agents.t === 'advisory' ? seat.agents.reason : '', /^NOT held: .*spawn_agent/);
     // A shell granted inside the worktree is what the sandbox does hold.
     assert.equal(capabilityReport('codex', KINDS.checkout.caps).shell.t, 'enforced');
   });

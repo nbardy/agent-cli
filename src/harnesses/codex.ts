@@ -9,6 +9,7 @@ import type {
   McpServerSpec,
   TurnCapabilities,
   TurnFiles,
+  TurnGit,
 } from '../types.ts';
 
 /**
@@ -98,8 +99,14 @@ function codexMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): Mcp
 //   Nothing drops `$CODEX_HOME/AGENTS.md`, the owner's global file: only moving CODEX_HOME would,
 //   and that moves the login and the session files the server ingests. The first real run's
 //   prompt began with it (3,057 characters).
-// - multi_agent and multi_agent_v2 are disabled, but prompt-input still shows Codex's
-//   multi-agent role text with both off, so the tools' absence is not observable here.
+// - multi_agent and multi_agent_v2 are disabled, but that does NOT remove sub-agents: in the
+//   second real run (2026-11-11, codex-cli 0.160.0, gpt-6.1-sol) a `tree: none` call with both
+//   disabled called `collaboration.spawn_agent` and a sub-agent thread started and completed
+//   (rollout: `SubAgentActivity` started/completed). Its tool list also held
+//   collaboration.{followup_task,interrupt_agent,list_agents,send_message,wait_agent}. No
+//   feature in `codex features list` or `-c agents.*` key was found that removes them
+//   (`agents.max_threads=0` is rejected: "must be at least 1"), so `agents` is reported as not
+//   held, with that evidence.
 const CODEX_ALWAYS_OFF = [
   'multi_agent',
   'multi_agent_v2',
@@ -116,8 +123,11 @@ const CODEX_WEB = {
   off: 'disabled',
   on: 'live',
 } as const satisfies Record<TurnCapabilities['web'], string>;
+// The second real run (2026-11-11) also showed a `<skills_instructions>` developer message
+// listing the owner's 35 skills from ~/.codex/skills and ~/.agents/skills (13.5k characters) in a
+// call with `--ignore-user-config`; `--disable skill_search` did not remove it (prompt-input).
 const CODEX_GLOBAL_INSTRUCTIONS =
-  "codex always loads the owner's $CODEX_HOME/AGENTS.md; only a different CODEX_HOME skips it, which would also move its login and sessions";
+  "codex always loads the owner's $CODEX_HOME/AGENTS.md and lists the owner's skills (~/.codex/skills, ~/.agents/skills); only a different CODEX_HOME skips them, which would also move its login and sessions";
 const CODEX_INSTRUCTIONS: {
   readonly [K in TurnCapabilities['instructions']]: {
     readonly args: readonly string[];
@@ -153,9 +163,22 @@ const CODEX_FILES: {
       'sandbox_workspace_write.exclude_tmpdir_env_var=true',
       '-c',
       'sandbox_workspace_write.exclude_slash_tmp=true',
+      ...(CODEX_GIT[f.git.t] as (g: TurnGit) => readonly string[])(f.git),
     ],
     shell: CODEX_SHELL[f.shell],
   }),
+};
+// A linked worktree's commit metadata, as extra writable roots (types.ts `TurnGit`). Verified
+// 2026-11-11 against codex-cli 0.160.0 with `codex sandbox --sandbox-state-json` and the exact
+// filesystem policy of the second real run's checkout call: with only the worktree writable,
+// `git commit` fails on `<repo>/.git/worktrees/<name>/index.lock`; with these roots added it
+// commits, and a write to `<repo>/.git/config-probe` is still refused (the repository's own
+// `.git` stays read-only). Script: output/expedition-run2-2026-11-11/scripts/codex-sandbox-commit.sh.
+const CODEX_GIT: {
+  readonly [K in TurnGit['t']]: (g: Extract<TurnGit, { t: K }>) => readonly string[];
+} = {
+  none: () => [],
+  worktree: (g) => ['-c', `sandbox_workspace_write.writable_roots=${tomlStringArray(g.dirs)}`],
 };
 const CODEX_SHELL: { readonly [S in Extract<TurnFiles, { t: 'write' }>['shell']]: Enforcement } =
   {
@@ -187,7 +210,7 @@ function codexCapabilities(caps: TurnCapabilities): CapabilityEncoding {
       shell: files.shell,
       web: ENFORCED,
       agents: advisory(
-        "multi_agent and multi_agent_v2 are disabled, but codex still describes spawn_agent in its prompt, so the tools' absence is not verified"
+        'NOT held: with multi_agent and multi_agent_v2 disabled codex still offers collaboration.spawn_agent, and a real call used it to start a sub-agent (2026-11-11); no flag removes it'
       ),
       schedule: ENFORCED,
       mcp: ENFORCED,

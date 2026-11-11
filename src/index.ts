@@ -35,6 +35,7 @@ export type {
   McpCapability,
   TurnCapabilities,
   TurnFiles,
+  TurnGit,
   CapabilityName,
   CapabilityReport,
   CapabilityEncoding,

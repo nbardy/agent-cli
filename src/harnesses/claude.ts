@@ -164,6 +164,10 @@ const CLAUDE_FILES: {
     sandbox: {},
     reads: ENFORCED,
   }),
+  // `f.git` adds nothing here: Claude's sandbox resolves a linked worktree's git directory itself
+  // (its bundle handles a worktree's `commondir`), and in the second real run (2026-11-11) a
+  // checkout call committed from its sandboxed Bash with exactly this argv. What else of the
+  // main repository's `.git` that leaves writable to Bash was not probed.
   write: (f) => {
     const shell = CLAUDE_SHELL[f.shell](f.reads);
     return {

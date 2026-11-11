@@ -144,6 +144,8 @@ export type TurnFiles =
   | { readonly t: 'read'; readonly roots: readonly string[] }
   | {
       readonly t: 'write';
+      /** Host-created scratch outside cwd/read roots; the host removes it at settle. */
+      readonly temp: string;
       readonly dir: string;
       readonly reads: readonly string[];
       readonly shell: 'off' | 'on';

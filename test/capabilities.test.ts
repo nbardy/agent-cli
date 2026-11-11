@@ -213,6 +213,7 @@ const KINDS = {
       {
         t: 'write',
         dir: '/x/run/tree',
+        temp: '/private-temp/checkout',
         reads: ['/x/refs'],
         shell: 'on',
         git: { t: 'worktree', dirs: ['/repo/.git/worktrees/tree', '/repo/.git/objects'] },
@@ -226,7 +227,7 @@ const KINDS = {
   leader: {
     cwd: '/x/drafts/1',
     caps: caps(
-      { t: 'write', dir: '/x/drafts/1', reads: ['/x'], shell: 'off', git: { t: 'none' } },
+      { t: 'write', dir: '/x/drafts/1', temp: '/private-temp/leader', reads: ['/x'], shell: 'off', git: { t: 'none' } },
       'off',
       'none'
     ),
@@ -388,7 +389,9 @@ const CODEX: Record<Kind, string[]> = {
     ...codexHead('/x/run/tree'),
     ...WORKSPACE_WRITE,
     '-c',
-    'sandbox_workspace_write.writable_roots=["/repo/.git/worktrees/tree","/repo/.git/objects"]',
+    'sandbox_workspace_write.writable_roots=["/private-temp/checkout","/repo/.git/worktrees/tree","/repo/.git/objects"]',
+    '-c',
+    'shell_environment_policy.set={"TMPDIR"="/private-temp/checkout","TMPPREFIX"="/private-temp/checkout/zsh","TMP"="/private-temp/checkout","TEMP"="/private-temp/checkout"}',
     '-c',
     'web_search="live"',
     ...CODEX_OFF,
@@ -407,6 +410,10 @@ const CODEX: Record<Kind, string[]> = {
   leader: [
     ...codexHead('/x/drafts/1'),
     ...WORKSPACE_WRITE,
+    '-c',
+    'sandbox_workspace_write.writable_roots=["/private-temp/leader"]',
+    '-c',
+    'shell_environment_policy.set={"TMPDIR"="/private-temp/leader","TMPPREFIX"="/private-temp/leader/zsh","TMP"="/private-temp/leader","TEMP"="/private-temp/leader"}',
     '-c',
     'web_search="disabled"',
     ...NO_PROJECT_DOCS,
@@ -518,6 +525,13 @@ describe('a capability set refuses what would widen it', () => {
       () => turnCommand({ ...base, harness: 'codex', fullAuto: true, webSearch: true }),
       /takes no fullAuto, webSearch/
     );
+  });
+  it('temp must be absolute and outside cwd/read roots', () => {
+    const write = KINDS.leader;
+    assert.ok(write.caps.files.t === 'write');
+    const files = write.caps.files;
+    for (const temp of ['tmp', '/x/drafts/1/tmp', '/x/private', '/x', '/'])
+      assert.throws(() => turnCommand({ ...base, cwd: write.cwd, capabilities: { ...write.caps, files: { ...files, temp } } }), /absolute temp directory outside/);
   });
   it('a writable directory that is not the turn cwd', () => {
     assert.throws(

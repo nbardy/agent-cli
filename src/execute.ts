@@ -218,6 +218,15 @@ function accessOf(request: ExecuteCommandRequest): Access {
     throw new Error(
       `A capability set's writable directory must be the turn's cwd (${caps.files.dir} is not ${request.cwd})`
     );
+  if (caps.files.t === 'write' && caps.files.temp) {
+    const temp = caps.files.temp;
+    const inside = (a: string, b: string) => {
+      const relative = path.relative(path.resolve(a), path.resolve(b));
+      return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+    };
+    if (!path.isAbsolute(temp) || [request.cwd, ...caps.files.reads].some((root) => inside(root, temp) || inside(temp, root)))
+      throw new Error('A write capability needs an absolute temp directory outside cwd and read roots');
+  }
   return { t: 'limited', encoding: encodeCapabilities(request.harness, caps) };
 }
 

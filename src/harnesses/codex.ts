@@ -92,7 +92,7 @@ function codexMcpEncoding(servers: Readonly<Record<string, McpServerSpec>>): Mcp
 // - `--ignore-rules` drops user and project execpolicy rules, which could allow a command out of
 //   the sandbox. `approval_policy = "never"`: a sandbox denial goes back to the model as a
 //   failed command, never to an approval nobody would give.
-// - The sandbox confines writes (read-only, or workspace-write = the cwd only: TMPDIR and /tmp
+// - The sandbox confines writes (read-only, or workspace-write = cwd + private temp: shared TMPDIR and /tmp
 //   excluded) and the shell's network. It does not confine reads: Codex reads files through its
 //   shell, so the shell stays on even when the set says `off` (advisory, below).
 // - `project_doc_max_bytes = 0` drops the repository's AGENTS.md (prompt-input: gone).
@@ -144,7 +144,7 @@ const CODEX_READS = advisory(
   "codex's sandbox confines writes and network, not reads: its shell can read the whole disk"
 );
 const CODEX_SHELL_STAYS = advisory(
-  'codex reads files only through its shell, so the shell stays on, inside the sandbox (no writes outside its directory, no network)'
+  'codex reads files only through its shell, so the shell stays on, inside the sandbox (no writes outside its directory and temp, no network)'
 );
 const CODEX_FILES: {
   readonly [K in TurnFiles['t']]: (f: Extract<TurnFiles, { t: K }>) => {
@@ -165,7 +165,11 @@ const CODEX_FILES: {
       'sandbox_workspace_write.exclude_tmpdir_env_var=true',
       '-c',
       'sandbox_workspace_write.exclude_slash_tmp=true',
-      ...(CODEX_GIT[f.git.t] as (g: TurnGit) => readonly string[])(f.git),
+      '-c',
+      `sandbox_workspace_write.writable_roots=${tomlStringArray([f.temp, ...CODEX_GIT[f.git.t](f.git as never)].filter(Boolean))}`,
+      // zsh heredocs use TMPPREFIX rather than TMPDIR. A real leader stopped without it.
+      // Guard: capability argv table and real leader/checkout probes.
+      ...(f.temp ? ['-c', `shell_environment_policy.set=${tomlInlineTable({ TMPDIR: f.temp, TMPPREFIX: `${f.temp}/zsh`, TMP: f.temp, TEMP: f.temp })}`] : []),
     ],
     shell: CODEX_SHELL[f.shell],
   }),
@@ -180,7 +184,7 @@ const CODEX_GIT: {
   readonly [K in TurnGit['t']]: (g: Extract<TurnGit, { t: K }>) => readonly string[];
 } = {
   none: () => [],
-  worktree: (g) => ['-c', `sandbox_workspace_write.writable_roots=${tomlStringArray(g.dirs)}`],
+  worktree: (g) => g.dirs,
 };
 const CODEX_SHELL: { readonly [S in Extract<TurnFiles, { t: 'write' }>['shell']]: Enforcement } =
   {

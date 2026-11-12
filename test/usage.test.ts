@@ -325,3 +325,16 @@ test('zero aggregate cache writes cannot erase contradictory reported tiers', ()
   }).find((e) => e.type === 'usage');
   assert.ok(event?.type === 'usage' && event.usage.tokens.t === 'unreported');
 });
+
+test('Codex nonzero cache writes remain unreported without a known write mapping', () => {
+  const event = parseCodex({
+    type: 'turn.completed',
+    usage: {
+      input_tokens: 100,
+      cached_input_tokens: 30,
+      cache_write_input_tokens: 11,
+      output_tokens: 17,
+    },
+  }).find((e) => e.type === 'usage');
+  assert.ok(event?.type === 'usage' && event.usage.tokens.t === 'unreported');
+});

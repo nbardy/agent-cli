@@ -166,7 +166,8 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
                 type: 'usage' as const,
                 usage: {
                   t: 'total' as const,
-                  // Codex has no cache-write class or charge. Output includes reasoning tokens.
+                  // OpenAI has no separate write charge. Preserve an unexpected native write
+                  // count as unreported, never erase it. Output includes reasoning tokens.
                   tokens: tokenUsage(
                     asNumber(u.input_tokens) === undefined ||
                       asNumber(u.cached_input_tokens) === undefined
@@ -174,7 +175,7 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
                       : (u.input_tokens as number) - (u.cached_input_tokens as number),
                     asNumber(u.output_tokens),
                     asNumber(u.cached_input_tokens),
-                    0,
+                    asNumber(u.cache_write_input_tokens) ?? 0,
                   ),
                 },
               },

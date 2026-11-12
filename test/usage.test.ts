@@ -310,3 +310,18 @@ test('OpenCode billing output restores the separately reported reasoning tokens'
     cacheWrite1h: 0,
   });
 });
+
+test('zero aggregate cache writes cannot erase contradictory reported tiers', () => {
+  const event = createClaudeParser()({
+    type: 'result',
+    subtype: 'success',
+    usage: {
+      input_tokens: 1,
+      output_tokens: 2,
+      cache_read_input_tokens: 3,
+      cache_creation_input_tokens: 0,
+      cache_creation: { ephemeral_5m_input_tokens: 1, ephemeral_1h_input_tokens: 0 },
+    },
+  }).find((e) => e.type === 'usage');
+  assert.ok(event?.type === 'usage' && event.usage.tokens.t === 'unreported');
+});

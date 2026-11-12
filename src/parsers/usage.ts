@@ -21,8 +21,8 @@ export function tokenUsage(
       why: 'Harness omitted input, output, cached read or cache write tokens',
     };
   if (cacheWrite === 0) {
-    cacheWrite5m = 0;
-    cacheWrite1h = 0;
+    cacheWrite5m ??= 0;
+    cacheWrite1h ??= 0;
   }
   if (
     cacheWrite5m === undefined ||

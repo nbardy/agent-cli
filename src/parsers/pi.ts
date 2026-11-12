@@ -1,6 +1,7 @@
 import { failureEvents } from '../diagnostics.ts';
-import { asObject, asString } from '../json-utils.ts';
+import { asNumber, asObject, asString } from '../json-utils.ts';
 import type { UnifiedAgentEvent } from '../runtime-types.ts';
+import { tokenUsage } from './usage.ts';
 
 // Pattern: parse-dont-validate (docs/patterns.md#parse-dont-validate)
 export function createPiParser(): (json: unknown) => UnifiedAgentEvent[] {
@@ -19,7 +20,13 @@ export function createPiParser(): (json: unknown) => UnifiedAgentEvent[] {
       }
     }
     if (type === 'tool_execution_start') {
-      return [{ type: 'tool.use', name: asString(event.toolName) ?? 'tool', input: asObject(event.args) ?? {} }];
+      return [
+        {
+          type: 'tool.use',
+          name: asString(event.toolName) ?? 'tool',
+          input: asObject(event.args) ?? {},
+        },
+      ];
     }
     if (type === 'tool_execution_end') {
       return [{ type: 'tool.result', output: event.result, isError: event.isError === true }];
@@ -31,16 +38,35 @@ export function createPiParser(): (json: unknown) => UnifiedAgentEvent[] {
       if (!streamed && Array.isArray(message.content)) {
         for (const block of message.content) {
           const part = asObject(block);
-          if (part?.type === 'text' && typeof part.text === 'string') events.push({ type: 'text.delta', text: part.text });
+          if (part?.type === 'text' && typeof part.text === 'string')
+            events.push({ type: 'text.delta', text: part.text });
         }
       }
       const usage = asObject(message.usage);
       if (usage && typeof usage.input === 'number' && typeof usage.output === 'number') {
         const cacheRead = typeof usage.cacheRead === 'number' ? usage.cacheRead : 0;
         const cacheWrite = typeof usage.cacheWrite === 'number' ? usage.cacheWrite : 0;
-        events.push({ type: 'usage', usage: { contextTokens: usage.input + cacheRead + cacheWrite, outputTokens: usage.output, cachedInputTokens: cacheRead, cacheWriteTokens: cacheWrite } });
+        events.push({
+          type: 'usage',
+          usage: {
+            t: 'request',
+            tokens: tokenUsage(
+              usage.input,
+              usage.output,
+              asNumber(usage.cacheRead),
+              asNumber(usage.cacheWrite),
+            ),
+            contextTokens: usage.input + cacheRead + cacheWrite,
+            outputTokens: usage.output,
+            cachedInputTokens: cacheRead,
+            cacheWriteTokens: cacheWrite,
+          },
+        });
       }
-      failure = message.stopReason === 'error' ? (asString(message.errorMessage) ?? 'Pi provider failed') : undefined;
+      failure =
+        message.stopReason === 'error'
+          ? (asString(message.errorMessage) ?? 'Pi provider failed')
+          : undefined;
       return events;
     }
     // SoL-Pi may compact and start another run after agent_end. Closing there

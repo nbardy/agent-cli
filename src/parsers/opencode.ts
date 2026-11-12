@@ -1,6 +1,7 @@
 import { failureEvents } from '../diagnostics.ts';
 import { asNumber, asObject, asString, normalizeType } from '../json-utils.ts';
 import type { UnifiedAgentEvent } from '../runtime-types.ts';
+import { tokenUsage } from './usage.ts';
 
 /**
  * OpenCode's `tokens` block on step-finish keeps cache hits OUT of `input`,
@@ -21,6 +22,8 @@ function openCodeUsageEvents(rawTokens: unknown): UnifiedAgentEvent[] {
     {
       type: 'usage',
       usage: {
+        t: 'request',
+        tokens: tokenUsage(input, asNumber(tokens.output), cacheRead, cacheWrite),
         contextTokens: input + (cacheRead ?? 0) + (cacheWrite ?? 0),
         outputTokens: asNumber(tokens.output) ?? 0,
         ...(cacheRead === undefined ? {} : { cachedInputTokens: cacheRead }),
@@ -69,11 +72,13 @@ export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
           input: asObject(state?.input) ?? {},
         },
         ...(state?.status === 'completed' || state?.status === 'error'
-          ? [{
-              type: 'tool.result' as const,
-              output: state.output,
-              isError: state.status === 'error',
-            }]
+          ? [
+              {
+                type: 'tool.result' as const,
+                output: state.output,
+                isError: state.status === 'error',
+              },
+            ]
           : []),
       ];
     }
@@ -105,7 +110,7 @@ export function parseOpenCode(json: unknown): UnifiedAgentEvent[] {
     case 'error':
       return failureEvents(
         asString(obj.message) ?? asString(asObject(obj.error)?.message) ?? 'OpenCode error',
-        false
+        false,
       );
     default: {
       const text = extractAssistantText(obj);

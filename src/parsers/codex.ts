@@ -1,10 +1,11 @@
 import { failureEvents } from '../diagnostics.ts';
-import { asObject, asString } from '../json-utils.ts';
+import { asNumber, asObject, asString } from '../json-utils.ts';
 import type {
   UnifiedAgentEvent,
   UnifiedSubagentStateEvent,
   UnifiedSubagentStatus,
 } from '../runtime-types.ts';
+import { tokenUsage } from './usage.ts';
 
 const SUBAGENT_OPERATIONS = new Map<string, UnifiedSubagentStateEvent['operation']>([
   ['spawn_agent', 'spawn'],
@@ -33,7 +34,7 @@ function asStringArray(value: unknown): string[] {
 
 function normalizeCodexSubagentStatus(
   rawStatus: string | undefined,
-  fallback: UnifiedSubagentStatus
+  fallback: UnifiedSubagentStatus,
 ): UnifiedSubagentStatus {
   if (!rawStatus) return fallback;
   switch (rawStatus) {
@@ -60,7 +61,7 @@ function normalizeCodexSubagentStatus(
 function formatCodexSubagentMessage(
   toolName: string,
   rawStatus: string | undefined,
-  message: string | undefined
+  message: string | undefined,
 ): string | undefined {
   if (message) return message;
   if (rawStatus === 'pending_init') return 'Pending initialization';
@@ -115,14 +116,20 @@ function collabSubagentEvents(item: Record<string, unknown>): UnifiedAgentEvent[
   const prompt = asString(item.prompt)?.trim();
   const description =
     operation === 'spawn'
-      ? prompt ? `[Codex Agent] ${prompt}` : 'Running Codex sub-agent...'
+      ? prompt
+        ? `[Codex Agent] ${prompt}`
+        : 'Running Codex sub-agent...'
       : `Running ${toolName}...`;
   const fallbackStatus: UnifiedSubagentStatus = operation === 'spawn' ? 'pending' : 'running';
 
   return [...childIds].map((id) => {
     const state = asObject(agentStates?.[id]);
     const rawStatus = asString(state?.status);
-    const message = formatCodexSubagentMessage(toolName, rawStatus, asString(state?.message)?.trim());
+    const message = formatCodexSubagentMessage(
+      toolName,
+      rawStatus,
+      asString(state?.message)?.trim(),
+    );
     return {
       type: 'subagent.state',
       id,
@@ -137,27 +144,8 @@ function collabSubagentEvents(item: Record<string, unknown>): UnifiedAgentEvent[
   });
 }
 
-/**
- * `codex exec --json`'s `turn.completed` usage is the SESSION-CUMULATIVE total,
- * not the latest request's context, so this parser deliberately emits NO
- * `usage` event for codex -- the same treatment claude's turn-aggregate
- * `result` usage gets. Reporting the aggregate as a context size overstates by
- * the number of requests so far, and the overstatement grows without bound.
- *
- * Evidence (2026-09-22, gpt-6-astra session 01a0c787): stdout reported
- * input 16,062,762 / cached 15,811,968 / output 39,152, exactly matching the
- * rollout file's `total_token_usage`, while its `last_token_usage` -- the real
- * per-request context -- was input 244,247 on a 258,400 window. The meter
- * showed "16.1M" against that window because the live aggregate outranked the
- * correct file reading. An earlier single-turn fixture (input 30,735) could not
- * distinguish the two, because last and total coincide on the first request.
- *
- * Per-request truth lives in the rollout file's `token_count` event
- * (`last_token_usage` + `model_context_window`), which the exec stream does
- * not emit. The server reads it there (session-context.ts); the window comes
- * from the same record. `codex exec --json` carries neither.
- */
-
+// Exec reports session totals, not the last request's context (16M vs 244K in the
+// 2026-09-22 incident). Keep that scope explicit. Guard: usage.test.ts aggregate meter.
 export function parseCodex(json: unknown): UnifiedAgentEvent[] {
   const obj = asObject(json);
   if (!obj) return [{ type: 'error', message: 'Codex emitted non-object JSON' }];
@@ -169,14 +157,36 @@ export function parseCodex(json: unknown): UnifiedAgentEvent[] {
       return [{ type: 'progress', source: 'codex.thread_started' }];
     case 'turn.started':
       return [{ type: 'turn.started' }];
-    case 'turn.completed':
-      // No usage event: obj.usage is the session-cumulative aggregate (see
-      // above), not this request's context. The turn still completes.
-      return [{ type: 'turn.complete', reason: 'success' }];
+    case 'turn.completed': {
+      const u = asObject(obj.usage);
+      return [
+        ...(u
+          ? [
+              {
+                type: 'usage' as const,
+                usage: {
+                  t: 'total' as const,
+                  // Codex has no cache-write class or charge. Output includes reasoning tokens.
+                  tokens: tokenUsage(
+                    asNumber(u.input_tokens) === undefined ||
+                      asNumber(u.cached_input_tokens) === undefined
+                      ? undefined
+                      : (u.input_tokens as number) - (u.cached_input_tokens as number),
+                    asNumber(u.output_tokens),
+                    asNumber(u.cached_input_tokens),
+                    0,
+                  ),
+                },
+              },
+            ]
+          : []),
+        { type: 'turn.complete', reason: 'success' },
+      ];
+    }
     case 'turn.failed': {
       const raw = obj.error;
       return failureEvents(
-        asString(raw) ?? asString(asObject(raw)?.message) ?? JSON.stringify(raw ?? 'Unknown error')
+        asString(raw) ?? asString(asObject(raw)?.message) ?? JSON.stringify(raw ?? 'Unknown error'),
       );
     }
     case 'error':

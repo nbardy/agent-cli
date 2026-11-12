@@ -39,7 +39,15 @@ export const CODEX_REASONING_LEVELS = [
   'ultra',
 ] as const;
 export type CodexReasoningLevel = (typeof CODEX_REASONING_LEVELS)[number];
-export const MUSE_REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'ultra'] as const;
+export const MUSE_REASONING_LEVELS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'ultra',
+] as const;
 export type MuseReasoningLevel = (typeof MUSE_REASONING_LEVELS)[number];
 export type TurnMode = 'conversation' | 'single-shot';
 export type CompletionReason = 'success' | 'out_of_tokens' | 'error' | 'killed';
@@ -130,11 +138,12 @@ type MuseExecuteCommandRequest = BaseExecuteCommandRequest<'muse'> & {
   fullAuto?: never;
 };
 
-type NoExtraExecuteCommandRequest<THarness extends Exclude<HarnessName, 'codex' | 'claude' | 'muse' | 'pi'>> =
-  BaseExecuteCommandRequest<THarness> & {
-    reasoningEffort?: never;
-    fullAuto?: never;
-  };
+type NoExtraExecuteCommandRequest<
+  THarness extends Exclude<HarnessName, 'codex' | 'claude' | 'muse' | 'pi'>,
+> = BaseExecuteCommandRequest<THarness> & {
+  reasoningEffort?: never;
+  fullAuto?: never;
+};
 
 export type ExecuteCommandRequest =
   | CodexExecuteCommandRequest
@@ -146,35 +155,32 @@ export type ExecuteCommandRequest =
   | NoExtraExecuteCommandRequest<'cursor'>
   | NoExtraExecuteCommandRequest<GeminiAlias>;
 
-/**
- * Provider-counted tokens for one request. Every field is a number the harness
- * itself reported -- this type never carries an estimate, so a consumer can
- * treat it as billing truth rather than a guess.
- *
- * `contextTokens` is canonicalized here because the harnesses disagree on what
- * "input" means: claude and opencode report cache hits in SEPARATE fields
- * that must be added back to input. Each parser resolves its own convention
- * so nothing downstream has to know which harness spoke. Codex emits no
- * `usage` event at all: its exec-stdout `input_tokens` is the
- * session-cumulative total, not one request's context (2026-09-22: 16,062,762
- * stdout vs 244,247 per-request on the same session), so per-request codex
- * truth comes only from the rollout file.
- */
-export interface TurnUsage {
-  /** Total input the provider counted for the latest request: the live context size. */
-  contextTokens: number;
-  outputTokens: number;
-  /** Portion of `contextTokens` served from cache. Absent when the harness does not split it out. */
-  cachedInputTokens?: number;
-  /** Portion of `contextTokens` written to cache. Absent when the harness does not report it. */
-  cacheWriteTokens?: number;
-  /**
-   * The model's context window. Absent means the harness does not report one
-   * (claude and `codex exec` both omit it) -- NOT that the window is unknown
-   * to the caller, who can resolve it from the model id.
-   */
-  contextWindow?: number;
-}
+/** Pricing classes reported by the harness, never inferred from a context meter. */
+export type TokenUsage =
+  | {
+      t: 'reported';
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite5m: number;
+      cacheWrite1h: number;
+    }
+  | { t: 'unreported'; why: string };
+
+/** A request's live context, or the session aggregate (which must never update a context meter).
+ * Totals replace request measurements for accounting. On resumed sessions they include earlier turns.
+ * A fresh execution, such as runTurn, has exactly one turn's total. */
+export type TurnUsage =
+  | { t: 'total'; tokens: TokenUsage }
+  | {
+      t: 'request';
+      contextTokens: number;
+      outputTokens: number;
+      cachedInputTokens?: number;
+      cacheWriteTokens?: number;
+      contextWindow?: number;
+      tokens: TokenUsage;
+    };
 
 export type UnifiedAgentEvent =
   | { type: 'session.started'; sessionId: string }
@@ -184,14 +190,19 @@ export type UnifiedAgentEvent =
   | { type: 'session.title'; title: string; source: 'ai' | 'custom' }
   | { type: 'turn.started' }
   | { type: 'text.delta'; text: string }
-  | { type: 'tool.use'; name: string; input: Record<string, unknown>; displayText?: string; phase?: 'started' | 'completed' }
+  | {
+      type: 'tool.use';
+      name: string;
+      input: Record<string, unknown>;
+      displayText?: string;
+      phase?: 'started' | 'completed';
+    }
   | { type: 'tool.result'; output: unknown; isError?: boolean }
   | UnifiedSubagentStateEvent
   | UnifiedTaskEvent
   | { type: 'progress'; source: string; data?: Record<string, unknown> }
   | { type: 'out_of_tokens'; message: string }
-  // Provider-counted usage for the request that just completed. Emitted only
-  // when the harness reports real numbers; silence means it reports none.
+  // Provider usage with explicit scope; silence means the harness reports none.
   | { type: 'usage'; usage: TurnUsage }
   | { type: 'error'; message: string }
   // `text` is the final assistant message, separated from progress by createParser.

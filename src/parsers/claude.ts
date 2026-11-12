@@ -1,6 +1,7 @@
 import { failureEvents } from '../diagnostics.ts';
 import { asNumber, asObject, asString } from '../json-utils.ts';
 import type { UnifiedAgentEvent } from '../runtime-types.ts';
+import { tokenUsage } from './usage.ts';
 
 /**
  * Claude splits one request's input across three fields, so the context size
@@ -8,17 +9,29 @@ import type { UnifiedAgentEvent } from '../runtime-types.ts';
  * against claude 2.1.267 a 38,804-token prompt reported `input_tokens: 2` with
  * the other 38,802 under cache_read/cache_creation.
  */
-function claudeUsageEvents(rawUsage: unknown): UnifiedAgentEvent[] {
+function claudeUsageEvents(rawUsage: unknown, total = false): UnifiedAgentEvent[] {
   const usage = asObject(rawUsage);
   if (!usage) return [];
   const input = asNumber(usage.input_tokens);
   const cacheRead = asNumber(usage.cache_read_input_tokens);
   const cacheWrite = asNumber(usage.cache_creation_input_tokens);
   if (input === undefined && cacheRead === undefined && cacheWrite === undefined) return [];
+  const tiers = asObject(usage.cache_creation);
+  const tokens = tokenUsage(
+    input,
+    asNumber(usage.output_tokens),
+    cacheRead,
+    cacheWrite,
+    asNumber(tiers?.ephemeral_5m_input_tokens),
+    asNumber(tiers?.ephemeral_1h_input_tokens),
+  );
+  if (total) return [{ type: 'usage', usage: { t: 'total', tokens } }];
   return [
     {
       type: 'usage',
       usage: {
+        t: 'request',
+        tokens,
         contextTokens: (input ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0),
         outputTokens: asNumber(usage.output_tokens) ?? 0,
         ...(cacheRead === undefined ? {} : { cachedInputTokens: cacheRead }),
@@ -62,12 +75,15 @@ function claudeTaskFinished(obj: Record<string, unknown>): UnifiedAgentEvent[] {
   return [{ type: 'task.finished', taskId, toolUseId, status }];
 }
 
-const CLAUDE_TASK_SUBTYPES = new Map<string, (obj: Record<string, unknown>) => UnifiedAgentEvent[]>([
-  ['task_started', claudeTaskStarted],
-  ['task_notification', claudeTaskFinished],
-]);
+const CLAUDE_TASK_SUBTYPES = new Map<string, (obj: Record<string, unknown>) => UnifiedAgentEvent[]>(
+  [
+    ['task_started', claudeTaskStarted],
+    ['task_notification', claudeTaskFinished],
+  ],
+);
 
 export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
+  const measured = new Set<string>();
   let pendingTool: { name: string; inputJson: string } | null = null;
 
   return (json: unknown): UnifiedAgentEvent[] => {
@@ -91,7 +107,8 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
     if (obj.type === 'system' && asString(obj.subtype) === 'init') {
       return [{ type: 'turn.started' }];
     }
-    const taskHandler = obj.type === 'system' ? CLAUDE_TASK_SUBTYPES.get(asString(obj.subtype) ?? '') : undefined;
+    const taskHandler =
+      obj.type === 'system' ? CLAUDE_TASK_SUBTYPES.get(asString(obj.subtype) ?? '') : undefined;
     if (taskHandler) return taskHandler(obj);
 
     if (obj.type === 'stream_event') {
@@ -134,15 +151,13 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
     }
 
     if (obj.type === 'assistant') {
-      // Usage rides the assistant message and ONLY the assistant message.
-      // `result` carries a usage block too, but it is the turn AGGREGATE across
-      // every request the turn made: on a recorded six-step run with subagents
-      // it read 70,213 while the final request's real context was 23,948.
-      // Reading it as a context size overstates by whatever the turn spent.
-      // Subagent messages (parent_tool_use_id set) measure the SUBAGENT's own
-      // context, not this thread's, so they are skipped for the same reason.
+      // A multi-block assistant repeats its full usage under the same message id.
+      // Count it once; the result's aggregate replaces these requests when available.
+      const id = asString(asObject(obj.message)?.id);
+      const fresh = !id || !measured.has(id);
+      if (id) measured.add(id);
       const usageEvents =
-        obj.parent_tool_use_id == null
+        obj.parent_tool_use_id == null && fresh
           ? claudeUsageEvents(asObject(obj.message)?.usage)
           : [];
       const content = asObject(obj.message)?.content;
@@ -178,9 +193,12 @@ export function createClaudeParser(): (json: unknown) => UnifiedAgentEvent[] {
       // is_error true, the message only on `result` (no text deltas). Reading
       // subtype alone made that an empty successful turn.
       const failed = asString(obj.subtype) !== 'success' || obj.is_error === true;
-      return failed
-        ? failureEvents(asString(obj.result) ?? 'Claude returned an error')
-        : [{ type: 'turn.complete', reason: 'success' }];
+      return [
+        ...claudeUsageEvents(obj.usage, true),
+        ...(failed
+          ? failureEvents(asString(obj.result) ?? 'Claude returned an error')
+          : [{ type: 'turn.complete' as const, reason: 'success' as const }]),
+      ];
     }
 
     return [];

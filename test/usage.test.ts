@@ -15,10 +15,11 @@ import type { TurnUsage, UnifiedAgentEvent } from '../src/runtime-types.ts';
  * a context meter that lies.
  */
 
-function usageOf(events: UnifiedAgentEvent[]): TurnUsage[] {
+function usageOf(events: UnifiedAgentEvent[]): Extract<TurnUsage, { t: 'request' }>[] {
   return events
     .filter((e): e is Extract<UnifiedAgentEvent, { type: 'usage' }> => e.type === 'usage')
-    .map((e) => e.usage);
+    .map((e) => e.usage)
+    .filter((u) => u.t === 'request');
 }
 
 /**
@@ -71,7 +72,7 @@ test('claude result carries a turn aggregate and must not report context', () =>
   assert.deepEqual(usageOf(events), [], 'result usage is an aggregate, not a context size');
   assert.ok(
     events.some((e) => e.type === 'turn.complete'),
-    'result still completes the turn'
+    'result still completes the turn',
   );
 });
 
@@ -118,7 +119,7 @@ test('codex turn.completed carries a session aggregate and must not report conte
   assert.deepEqual(usageOf(events), [], 'cumulative usage is an aggregate, not a context size');
   assert.ok(
     events.some((e) => e.type === 'turn.complete'),
-    'turn.completed still completes the turn'
+    'turn.completed still completes the turn',
   );
 });
 
@@ -164,7 +165,7 @@ test('opencode reports usage on mid-turn tool-call steps', () => {
   assert.equal(usageOf(events).length, 1);
   assert.ok(
     !events.some((e) => e.type === 'turn.complete'),
-    'a tool-calls step must not complete the turn'
+    'a tool-calls step must not complete the turn',
   );
 });
 
@@ -173,6 +174,119 @@ test('a harness that reports no usage emits no usage event', () => {
   assert.deepEqual(usageOf(parseOpenCode({ type: 'step_finish', part: { reason: 'stop' } })), []);
   assert.deepEqual(
     usageOf(createClaudeParser()({ type: 'assistant', message: { content: [] } })),
-    []
+    [],
   );
+});
+
+// Native fields are the pricing authority: no cache-write tier may be guessed.
+test('pricing classes table: Claude tiers, Codex inclusive input, and missing classes', () => {
+  const claude = (usage: object) => createClaudeParser()({ type: 'assistant', message: { usage } });
+  const base = {
+    input_tokens: 2,
+    output_tokens: 7,
+    cache_read_input_tokens: 13,
+    cache_creation_input_tokens: 11,
+  };
+  const cases = [
+    {
+      name: 'Claude mixed cache tiers',
+      events: claude({
+        ...base,
+        cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 8 },
+      }),
+      expected: {
+        t: 'reported',
+        input: 2,
+        output: 7,
+        cacheRead: 13,
+        cacheWrite5m: 3,
+        cacheWrite1h: 8,
+      },
+    },
+    {
+      name: 'Claude no writes needs no tier',
+      events: claude({ ...base, cache_creation_input_tokens: 0 }),
+      expected: {
+        t: 'reported',
+        input: 2,
+        output: 7,
+        cacheRead: 13,
+        cacheWrite5m: 0,
+        cacheWrite1h: 0,
+      },
+    },
+    {
+      name: 'Claude missing tiers',
+      events: claude(base),
+      expected: {
+        t: 'unreported',
+        why: 'Harness omitted cache-write tiers or their sum differs from cache creation',
+      },
+    },
+    {
+      name: 'Claude mismatched tiers',
+      events: claude({
+        ...base,
+        cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 1 },
+      }),
+      expected: {
+        t: 'unreported',
+        why: 'Harness omitted cache-write tiers or their sum differs from cache creation',
+      },
+    },
+    {
+      name: 'Codex session aggregate',
+      events: parseCodex({
+        type: 'turn.completed',
+        usage: { input_tokens: 100, cached_input_tokens: 30, output_tokens: 17 },
+      }),
+      expected: {
+        t: 'reported',
+        input: 70,
+        output: 17,
+        cacheRead: 30,
+        cacheWrite5m: 0,
+        cacheWrite1h: 0,
+      },
+    },
+    {
+      name: 'Codex omitted cache reads',
+      events: parseCodex({
+        type: 'turn.completed',
+        usage: { input_tokens: 100, output_tokens: 17 },
+      }),
+      expected: {
+        t: 'unreported',
+        why: 'Harness omitted input, output, cached read or cache write tokens',
+      },
+    },
+  ];
+  for (const c of cases) {
+    const event = c.events.find((e) => e.type === 'usage');
+    assert.ok(event?.type === 'usage', c.name);
+    assert.deepEqual(event.usage.tokens, c.expected, c.name);
+  }
+});
+
+test('Claude repeated assistant blocks count once; result totals carry tiers without context', () => {
+  const parse = createClaudeParser();
+  const row = { ...CLAUDE_ASSISTANT, message: { ...CLAUDE_ASSISTANT.message, id: 'msg-one' } };
+  assert.equal(usageOf(parse(row)).length, 1);
+  assert.equal(usageOf(parse(row)).length, 0);
+  const usage = {
+    ...row.message.usage,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 20271 },
+  };
+  const event = parse({ type: 'result', subtype: 'success', usage }).find(
+    (e) => e.type === 'usage',
+  );
+  assert.ok(event?.type === 'usage' && event.usage.t === 'total');
+  assert.deepEqual(event.usage.tokens, {
+    t: 'reported',
+    input: 2,
+    output: 4,
+    cacheRead: 18531,
+    cacheWrite5m: 0,
+    cacheWrite1h: 20271,
+  });
 });

@@ -18,12 +18,21 @@ function openCodeUsageEvents(rawTokens: unknown): UnifiedAgentEvent[] {
   const cache = asObject(tokens.cache);
   const cacheRead = asNumber(cache?.read);
   const cacheWrite = asNumber(cache?.write);
+  const output = asNumber(tokens.output);
+  const reasoning = asNumber(tokens.reasoning);
   return [
     {
       type: 'usage',
       usage: {
         t: 'request',
-        tokens: tokenUsage(input, asNumber(tokens.output), cacheRead, cacheWrite),
+        // OpenCode subtracts reasoning from output; pricing needs their sum.
+        // Source: github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/session.ts#getUsage
+        tokens: tokenUsage(
+          input,
+          output === undefined || reasoning === undefined ? undefined : output + reasoning,
+          cacheRead,
+          cacheWrite,
+        ),
         contextTokens: input + (cacheRead ?? 0) + (cacheWrite ?? 0),
         outputTokens: asNumber(tokens.output) ?? 0,
         ...(cacheRead === undefined ? {} : { cachedInputTokens: cacheRead }),

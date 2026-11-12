@@ -290,3 +290,23 @@ test('Claude repeated assistant blocks count once; result totals carry tiers wit
     cacheWrite1h: 20271,
   });
 });
+
+test('OpenCode billing output restores the separately reported reasoning tokens', () => {
+  const events = parseOpenCode({
+    ...OPENCODE_STEP_FINISH,
+    part: {
+      ...OPENCODE_STEP_FINISH.part,
+      tokens: { ...OPENCODE_STEP_FINISH.part.tokens, reasoning: 7 },
+    },
+  });
+  const [request] = usageOf(events);
+  assert.equal(request.outputTokens, 3, 'live visible output stays unchanged');
+  assert.deepEqual(request.tokens, {
+    t: 'reported',
+    input: 13497,
+    output: 10,
+    cacheRead: 1792,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
+  });
+});

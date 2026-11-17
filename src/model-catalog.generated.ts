@@ -133,6 +133,34 @@ export const MODEL_CATALOG = [
     "aliases": {},
     "models": [
       {
+        "id": "gpt-6.2-astra",
+        "reasoning": {
+          "levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        }
+      },
+      {
+        "id": "gpt-6.2-sol",
+        "reasoning": {
+          "levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultEffort": "medium"
+        }
+      },
+      {
         "id": "gpt-5.6-sol",
         "reasoning": {
           "levels": [

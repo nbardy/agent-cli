@@ -10,6 +10,8 @@ test('model strings use catalog-local effort recognition and explicit harnesses'
     ['claude:sonnet:high',{t:'seat',provider:'claude',model:'claude-sonnet-5-5',effort:{t:'given',value:'high'}}],
     ['claude:claude-sonnet-5-5',{t:'seat',provider:'claude',model:'claude-sonnet-5-5',effort:{t:'defaulted',value:'medium'}}],
     ['codex:gpt-6.1-sol:ultra',{t:'seat',provider:'codex',model:'gpt-6.1-sol',effort:{t:'given',value:'ultra'}}],
+    ['codex:gpt-6.2-astra',{t:'seat',provider:'codex',model:'gpt-6.2-astra',effort:{t:'defaulted',value:'medium'}}],
+    ['codex:gpt-6.2-sol:ultra',{t:'seat',provider:'codex',model:'gpt-6.2-sol',effort:{t:'given',value:'ultra'}}],
     ['opencode:openrouter/vendor/model:free',{t:'seat',provider:'opencode',model:'openrouter/vendor/model:free',effort:{t:'none'}}],
     ['opencode:openrouter/vendor/model:high',{t:'seat',provider:'opencode',model:'openrouter/vendor/model:high',effort:{t:'none'}}],
     ['gemini:gemini-2.5-pro',{t:'seat',provider:'gemini',model:'gemini-2.5-pro',effort:{t:'none'}}],

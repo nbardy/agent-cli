@@ -11,7 +11,7 @@
 // `supportsDynamicModels` allows ad-hoc `provider/model` IDs (opencode).
 // `aliases` map retired/shorthand ids onto a current `id` (historical session labels).
 {
-  "revision": "2026-11-11.fable-5.2",
+  "revision": "2026-11-18.gpt-6.2",
   "providers": [
     {
       "id": "pi",
@@ -93,9 +93,13 @@
       "id": "codex",
       "displayName": "Codex",
       "shortName": "X",
-      "defaultModelId": "gpt-6.1-sol",
+      "defaultModelId": "gpt-6.2-astra",
       "supportsDynamicModels": false,
       "models": [
+        // Codex models: https://learn.chatgpt.com/docs/models (2026-11-18).
+        // Keep our medium default; the CLI's recommended effort is separate policy.
+        { "id": "gpt-6.2-astra", "displayName": "GPT-6.2 Astra", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
+        { "id": "gpt-6.2-sol", "displayName": "GPT-6.2 Sol", "reasoning": { "levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.6-sol", "displayName": "GPT-5.6 Sol", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.6-terra", "displayName": "GPT-5.6 Terra", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
         { "id": "gpt-5.6-luna", "displayName": "GPT-5.6 Luna", "reasoning": { "levels": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "defaultEffort": "medium" } },
